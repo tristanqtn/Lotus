@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Lotus</title>
+    <style>
+      :root {
+        --lotus-background: #282a36;
+        --lotus-current-line: #44475a;
+        --lotus-selection: #44475a;
+        --lotus-foreground: #f8f8f2;
+        --lotus-comment: #6272a4;
+        --lotus-cyan: #8be9fd;
+        --lotus-green: #50fa7b;
+        --lotus-orange: #ffb86c;
+        --lotus-pink: #ff79c6;
+        --lotus-purple: #bd93f9;
+        --lotus-red: #ff5555;
+        --lotus-yellow: #f1fa8c;
+      }
+
+      body {
+        width: 340px;
+        padding: 15px;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica,
+          Arial, sans-serif;
+        background-color: var(--lotus-background);
+        color: var(--lotus-foreground);
+      }
+      .header {
+        display: flex;
+        align-items: center;
+        margin-bottom: 15px;
+      }
+      .logo {
+        font-size: 24px;
+        margin-right: 10px;
+        color: var(--lotus-purple);
+      }
+      .title {
+        font-size: 18px;
+        font-weight: bold;
+        color: var(--lotus-cyan);
+      }
+      .description {
+        margin-bottom: 15px;
+        color: var(--lotus-comment);
+        line-height: 1.4;
+      }
+      .instructions {
+        background: var(--lotus-current-line);
+        border-radius: 6px;
+        padding: 16px;
+        font-size: 14px;
+      }
+      .instructions h4 {
+        margin-top: 0;
+        margin-bottom: 12px;
+        color: var(--lotus-pink);
+      }
+      .instructions ol {
+        margin-left: 20px;
+        padding-left: 0;
+      }
+      .instructions li {
+        margin-bottom: 10px;
+      }
+      .feature-list {
+        margin-top: 15px;
+      }
+      .feature-list h4 {
+        color: var(--lotus-green);
+        margin-bottom: 10px;
+      }
+      .feature-list ul {
+        padding-left: 20px;
+      }
+      .feature-list li {
+        margin-bottom: 5px;
+      }
+      .shortcut {
+        background-color: var(--lotus-selection);
+        padding: 2px 5px;
+        border-radius: 3px;
+        font-family: monospace;
+      }
+      .highlight {
+        color: var(--lotus-yellow);
+        font-weight: bold;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="header">
+      <div class="logo">🪷</div>
+      <div class="title">Lotus</div>
+    </div>
+    <div class="description">
+      API request capture, inspect and replay tool for developers
+    </div>
+    <div class="instructions">
+      <h4>How to Access Lotus:</h4>
+      <ol>
+        <li>
+          Open Developer Tools (<span class="shortcut">F12</span> or
+          <span class="shortcut">Ctrl+Shift+I</span>)
+        </li>
+        <li>
+          Click on the <span class="highlight">Lotus</span> tab in the DevTools
+          panel (You may need to click the
+          <span class="highlight">&gt;&gt;</span> overflow menu to find it)
+        </li>
+        <li>If you don't see Lotus, close and reopen DevTools</li>
+      </ol>
+    </div>
+    <div class="feature-list">
+      <h4>Key Features:</h4>
+      <ul>
+        <li>
+          <span class="highlight">Auto-Capture:</span> Automatically logs all
+          API requests
+        </li>
+        <li>
+          <span class="highlight">Filter:</span> Search for specific requests
+        </li>
+        <li>
+          <span class="highlight">Copy as cURL:</span> Export any request as
+          cURL command
+        </li>
+        <li>
+          <span class="highlight">Modify & Resend:</span> Change and replay
+          requests
+        </li>
+        <li>
+          <span class="highlight">Theme Toggle:</span> Switch between light and
+          dark modes
+        </li>
+        <li>
+          <span class="highlight">Format Toggle:</span> Switch between raw and
+          pretty formatting
+        </li>
+      </ul>
+    </div>
+
+    <div class="feature-list">
+      <h4>How To Use:</h4>
+      <ul>
+        <li>
+          <span class="highlight">Request List:</span> Shows all captured API
+          requests in the left panel
+        </li>
+        <li>
+          <span class="highlight">Request Details:</span> Click any request to
+          view its headers and body
+        </li>
+        <li>
+          <span class="highlight">Response Details:</span> View response status,
+          headers, and body
+        </li>
+        <li>
+          <span class="highlight">Pretty/Raw:</span> Toggle between formatted
+          and raw data views
+        </li>
+        <li>
+          <span class="highlight">Modify:</span> Click "Modify & Resend" to edit
+          and send a new request
+        </li>
+        <li>
+          <span class="highlight">Filter:</span> Type in the filter box to find
+          specific requests
+        </li>
+      </ul>
+    </div>
+
+    <div class="feature-list">
+      <h4>Tips & Tricks:</h4>
+      <ul>
+        <li>Use the filter to find requests by URL, method, or status code</li>
+        <li>
+          JSON responses are automatically formatted for better readability
+        </li>
+        <li>Modified requests appear at the top of the request list</li>
+        <li>
+          Clear the request list to start fresh for a new debugging session
+        </li>
+        <li>Easily test API endpoints by modifying captured requests</li>
+      </ul>
+    </div>
+    <script>
+      document.addEventListener("DOMContentLoaded", function () {
+        // Check for saved theme preference
+        const savedTheme = localStorage.getItem("lotus-theme");
+        if (savedTheme === "light") {
+          document.body.classList.add("light-mode");
+        }
+
+        // Add theme toggle button
+        const header = document.querySelector(".header");
+        const themeToggle = document.createElement("button");
+        themeToggle.textContent =
+          localStorage.getItem("lotus-theme") === "light"
+            ? "Dark Mode"
+            : "Light Mode";
+        themeToggle.className = "theme-toggle";
+        themeToggle.title = "Toggle Light/Dark Mode";
+        header.appendChild(themeToggle);
+
+        // Theme toggle functionality
+        themeToggle.addEventListener("click", () => {
+          const isLightMode = document.body.classList.toggle("light-mode");
+          localStorage.setItem("lotus-theme", isLightMode ? "light" : "dark");
+          themeToggle.textContent = isLightMode ? "Dark Mode" : "Light Mode";
+        });
+
+        // Add styles for theme toggle and light mode
+        const style = document.createElement("style");
+        style.textContent = `        .theme-toggle {
+          margin-left: auto;
+          background-color: var(--lotus-current-line);
+          border: 1px solid var(--lotus-border);
+          border-radius: 4px;
+          font-size: 14px;
+          cursor: pointer;
+          padding: 6px 12px;
+          color: var(--lotus-purple);
+          transition: all 0.2s;
+        }
+        
+        .theme-toggle:hover {
+          background-color: var(--lotus-selection);
+        }
+        
+        body.light-mode {
+          --lotus-background: #ffffff;
+          --lotus-current-line: #f0f0f0;
+          --lotus-selection: #e0e0e0;
+          --lotus-foreground: #333333;
+          --lotus-comment: #6a737d;
+          --lotus-cyan: #0086b3;
+          --lotus-green: #22863a;
+          --lotus-orange: #e36209;
+          --lotus-pink: #d73a49;
+          --lotus-purple: #6f42c1;
+          --lotus-red: #cb2431;
+          --lotus-yellow: #b08800;
+        }
+        
+        body.light-mode .instructions {
+          background: #f6f8fa;
+        }
+      `;
+        document.head.appendChild(style);
+      });
+    </script>
+  </body>
+</html>
