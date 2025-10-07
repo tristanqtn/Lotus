@@ -6,10 +6,20 @@
   </head>
   <body>
     <header>
-      <div class="title">Lotus - API Replay Tool</div>
-      <div class="controls">
+      <div class="title">Lotus</div>
+        <div style="font-size:13px; color:var(--lotus-comment); margin-left:8px; font-style:italic;">
+          by <span style="color:var(--lotus-pink); font-weight:bold;">tristanqtn</span>
+        </div>
+        <div class="controls">
         <input type="text" id="filter" placeholder="Filter requests..." />
         <button id="clear">Clear All</button>
+        <button
+          id="group-related"
+          class="icon-button"
+          title="Group related requests together"
+        >
+          Group Related
+        </button>
         <button
           id="theme-toggle"
           class="icon-button"

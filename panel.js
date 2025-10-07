@@ -11,6 +11,7 @@ const filterInput = document.getElementById("filter");
 const clearButton = document.getElementById("clear");
 const copyCurlButton = document.getElementById("copy-curl");
 const modifyResendButton = document.getElementById("modify-resend");
+const groupRelatedToggle = document.getElementById("group-related");
 
 // Modal elements
 const modifyModal = document.getElementById("modify-modal");
@@ -63,13 +64,20 @@ let heartbeatInterval = null;
 
 // Transform a raw request from the background script to the display format
 function transformRequest(req, index) {
+  // Ensure we have a valid ID that's consistent across the object
+  const id = req.requestId || `req-${index}`;
+  
   return {
     ...req,
-    id: req.requestId || `req-${index}`,
+    id: id,
     statusCode: req.status,
     requestHeaders: toHeaderObject(req.requestHeaders),
     responseHeaders: toHeaderObject(req.responseHeaders),
-    time: new Date(req.timestamp).getTime(),
+    time: new Date(req.timestamp || Date.now()).getTime(),
+    // Add source tracking (default to 'page' for requests from the web page)
+    source: req.source || "page",
+    // Add parent ID for tracking relationships between requests
+    parentId: req.parentId || null,
   };
 }
 
@@ -177,8 +185,24 @@ function renderRequestsList() {
 
   // Sort requests by time (newest first)
   const sortedRequests = [...requests].sort((a, b) => b.time - a.time);
-
+  
+  // Create a map of requests that have modified versions
+  const requestsWithModifiedVersions = new Set();
+  const requestsWithParents = new Set();
+  
+  // Track which requests have modifications and which are modifications
   for (const request of sortedRequests) {
+    if (request.source === "modified" && request.parentId) {
+      requestsWithModifiedVersions.add(request.parentId);
+      requestsWithParents.add(request.id);
+    }
+  }
+  for (const request of sortedRequests) {
+    // Skip child requests when groupByRelated is enabled (they'll be shown under parents)
+    if (groupRelatedRequests && request.source === "modified" && request.parentId) {
+      continue; // Skip modified requests, they'll be displayed under their parents
+    }
+    
     // Apply filter if any
     if (
       filter &&
@@ -191,6 +215,13 @@ function renderRequestsList() {
     const requestElement = document.createElement("div");
     requestElement.classList.add("request-item");
     requestElement.dataset.id = request.id;
+
+    // Add appropriate class based on source
+    if (request.source === "modified") {
+      requestElement.classList.add("modified-request");
+    } else if (requestsWithModifiedVersions.has(request.id)) {
+      requestElement.classList.add("has-modified-versions");
+    }
 
     if (selectedRequestId === request.id) {
       requestElement.classList.add("selected");
@@ -207,23 +238,87 @@ function renderRequestsList() {
 
     // Format timestamp
     const time = new Date(request.time).toLocaleTimeString();
+    
+    // Prepare source indicator
+    let sourceIndicator = '';
+    if (request.source === "modified") {
+      sourceIndicator = '<span class="source-indicator modified-indicator" title="Modified request">M</span>';
+    } else if (requestsWithModifiedVersions.has(request.id)) {
+      sourceIndicator = '<span class="source-indicator original-with-mods-indicator" title="Has modified versions">+</span>';
+    }
 
     requestElement.innerHTML = `
       <div class="request-url">${urlDisplay}</div>
       <div class="request-meta">
+        ${sourceIndicator}
         <span class="method">${request.method}</span>
         <span class="time">${time}</span>
         <span class="status ${getStatusClass(request.statusCode)}">${
       request.statusCode || "-"
     }</span>
       </div>
-    `;
-
-    requestElement.addEventListener("click", () => {
+    `;    requestElement.addEventListener("click", () => {
       selectRequest(request.id);
     });
 
     requestsContainer.appendChild(requestElement);
+      // If grouping is enabled and this request has modified versions, add them below
+    if (groupRelatedRequests && requestsWithModifiedVersions.has(request.id)) {
+      const modifiedVersions = sortedRequests.filter(req => req.parentId === request.id && req.source === "modified");
+      
+      if (modifiedVersions.length > 0) {
+        try {
+          // Create a container for child requests
+          const childContainer = document.createElement("div");
+          childContainer.classList.add("child-requests-container");
+          
+          for (const childRequest of modifiedVersions) {
+            const childElement = document.createElement("div");
+            childElement.classList.add("request-item", "child-request-item", "modified-request");
+            childElement.dataset.id = childRequest.id;
+            
+            if (selectedRequestId === childRequest.id) {
+              childElement.classList.add("selected");
+            }
+            
+            // Format URL (just the path)
+            let childUrlDisplay;
+            try {
+              const url = new URL(childRequest.url);
+              childUrlDisplay = url.pathname + url.search;
+            } catch {
+              childUrlDisplay = childRequest.url;
+            }
+            
+            // Format timestamp
+            const childTime = new Date(childRequest.time || Date.now()).toLocaleTimeString();
+            
+            childElement.innerHTML = `
+              <div class="request-url">${childUrlDisplay}</div>
+              <div class="request-meta">
+                <span class="source-indicator modified-indicator" title="Modified request">M</span>
+                <span class="method">${childRequest.method}</span>
+                <span class="time">${childTime}</span>
+                <span class="status ${getStatusClass(childRequest.statusCode)}">${
+                  childRequest.statusCode || "-"
+                }</span>
+              </div>
+            `;
+            
+            childElement.addEventListener("click", (e) => {
+              e.stopPropagation(); // Prevent event bubbling
+              selectRequest(childRequest.id);
+            });
+            
+            childContainer.appendChild(childElement);
+          }
+          
+          requestsContainer.appendChild(childContainer);
+        } catch (error) {
+          console.error("Error rendering child requests:", error);
+        }
+      }
+    }
   }
 }
 
@@ -232,18 +327,78 @@ function selectRequest(requestId) {
   selectedRequestId = requestId;
 
   // Update selected item in the list
-  const items = requestsContainer.querySelectorAll(".request-item");
+  const items = document.querySelectorAll(".request-item");
   items.forEach((item) => {
     item.classList.toggle("selected", item.dataset.id === requestId);
   });
 
   const request = requests.find((req) => req.id === requestId);
   if (!request) return;
-
+  
+  // Check for related requests
+  const isModified = request.source === "modified";
+  const parentRequest = request.parentId ? requests.find(req => req.id === request.parentId) : null;
+  const modifiedVersions = requests.filter(req => req.parentId === request.id && req.source === "modified");
   // Update request details
   reqMethod.textContent = request.method || "-";
   reqUrl.textContent = request.url || "-";
-
+    // Display relationship info if applicable
+  const requestPanel = document.querySelector(".request-panel");
+  // Remove any existing relationship info
+  const existingRelInfo = requestPanel.querySelector(".relationship-info");
+  if (existingRelInfo) {
+    existingRelInfo.remove();
+  }
+  
+  try {
+    if (isModified && parentRequest) {
+      const relInfo = document.createElement("div");
+      relInfo.classList.add("relationship-info");
+      relInfo.innerHTML = `
+        <span>Modified from original request:</span>
+        <a class="parent-link" data-id="${request.parentId}" title="View original request">View original</a>
+      `;
+      const tabsElement = requestPanel.querySelector(".tabs");
+      if (tabsElement) {
+        requestPanel.insertBefore(relInfo, tabsElement);
+        
+        // Add click handler for parent link
+        const parentLink = relInfo.querySelector(".parent-link");
+        if (parentLink) {
+          parentLink.addEventListener("click", (e) => {
+            selectRequest(e.target.dataset.id);
+          });
+        }
+      }
+    } else if (modifiedVersions.length > 0) {
+      const relInfo = document.createElement("div");
+      relInfo.classList.add("relationship-info");
+      
+      const links = modifiedVersions.map((mod, index) => 
+        `<a class="child-link" data-id="${mod.id}" title="View modified version ${index + 1}">Version ${index + 1}</a>`
+      ).join(", ");
+      
+      relInfo.innerHTML = `
+        <span>Has ${modifiedVersions.length} modified version${modifiedVersions.length > 1 ? 's' : ''}:</span>
+        ${links}
+      `;
+      
+      const tabsElement = requestPanel.querySelector(".tabs");
+      if (tabsElement) {
+        requestPanel.insertBefore(relInfo, tabsElement);
+        
+        // Add click handlers for child links
+        relInfo.querySelectorAll(".child-link").forEach(link => {
+          link.addEventListener("click", (e) => {
+            selectRequest(e.target.dataset.id);
+          });
+        });
+      }
+    }
+  } catch (error) {
+    console.error("Error displaying relationship info:", error);
+  }
+  
   // Store original content for raw/pretty toggle
   originalContent.reqHeaders = request.requestHeaders || {};
   originalContent.reqBody = formatRequestBody(request.requestBody);
@@ -468,11 +623,12 @@ modalSend.addEventListener("click", async () => {
       if (response.headers.get("content-type")?.includes("json")) {
         formattedBody = JSON.stringify(JSON.parse(responseText), null, 2);
       }
-    } catch {}
-
-    // Create a new request object to add to the UI
+    } catch {}    // Create a new request object to add to the UI
+    const timestamp = Date.now();
+    const newRequestId = `modified-${timestamp}`;
     const newRequest = {
-      id: `modified-${Date.now()}`,
+      requestId: newRequestId, // Set requestId for proper tracking
+      id: newRequestId,
       url,
       method,
       statusCode: response.status,
@@ -481,8 +637,11 @@ modalSend.addEventListener("click", async () => {
       requestBody: body,
       responseHeaders: Object.fromEntries([...response.headers.entries()]),
       responseBody: formattedBody,
-      time: new Date().getTime(),
-      timestamp: new Date().toISOString(),
+      time: timestamp,
+      timestamp: new Date(timestamp).toISOString(),
+      // Mark as modified and track original request
+      source: "modified",
+      parentId: selectedRequestId,
     };
 
     // Add to requests list and select it
@@ -499,6 +658,7 @@ modalSend.addEventListener("click", async () => {
 
 // Theme and formatting state
 let isLightMode = false;
+let groupRelatedRequests = false;
 let requestFormattingState = {
   req: true, // true = pretty, false = raw
   resp: true, // true = pretty, false = raw
@@ -538,6 +698,35 @@ if (localStorage.getItem("lotus-theme") === "light") {
   themeToggle.textContent = "Dark Mode"; // Update initial button text
 } else {
   themeToggle.textContent = "Light Mode";
+}
+
+// Group Related toggle functionality
+if (groupRelatedToggle) {
+  groupRelatedToggle.addEventListener("click", () => {
+    groupRelatedRequests = !groupRelatedRequests;
+    
+    // Update button appearance
+    if (groupRelatedRequests) {
+      groupRelatedToggle.classList.add("active");
+      groupRelatedToggle.textContent = "Ungroup Related";
+    } else {
+      groupRelatedToggle.classList.remove("active");
+      groupRelatedToggle.textContent = "Group Related";
+    }
+    
+    // Save preference to localStorage
+    localStorage.setItem("lotus-group-related", groupRelatedRequests ? "true" : "false");
+    
+    // Re-render requests list
+    renderRequestsList();
+  });
+  
+  // Load saved grouping preference
+  if (localStorage.getItem("lotus-group-related") === "true") {
+    groupRelatedRequests = true;
+    groupRelatedToggle.classList.add("active");
+    groupRelatedToggle.textContent = "Ungroup Related";
+  }
 }
 
 // Format toggle functionality
