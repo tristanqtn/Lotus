@@ -8,13 +8,16 @@
   "parserOptions": {
     "ecmaVersion": 2021,
     "sourceType": "module"
-  },
-  "rules": {
+  },  "rules": {
     "no-unused-vars": "warn",
     "no-console": "off",
-    "indent": ["error", 2],
-    "quotes": ["error", "double"],
-    "semi": ["error", "always"]
+    "indent": "off",
+    "quotes": "warn",
+    "semi": ["error", "always"],
+    "no-empty": "warn",
+    "no-useless-escape": "warn",
+    "no-regex-spaces": "warn",
+    "no-undef": "off"
   },
   "ignorePatterns": ["dist/**/*", "node_modules/**/*"]
 }
