@@ -11,6 +11,7 @@ const filterInput = document.getElementById("filter");
 const clearButton = document.getElementById("clear");
 const copyCurlButton = document.getElementById("copy-curl");
 const modifyResendButton = document.getElementById("modify-resend");
+const deleteRequestButton = document.getElementById("delete-request");
 const groupRelatedToggle = document.getElementById("group-related");
 
 // Modal elements
@@ -238,11 +239,14 @@ function renderRequestsList() {
 
     // Format timestamp
     const time = new Date(request.time).toLocaleTimeString();
-    
-    // Prepare source indicator
+      // Prepare source indicator
     let sourceIndicator = '';
     if (request.source === "modified") {
-      sourceIndicator = '<span class="source-indicator modified-indicator" title="Modified request">M</span>';
+      let title = "Modified request";
+      if (request.originalDeleted) {
+        title = "Modified request (original deleted)";
+      }
+      sourceIndicator = `<span class="source-indicator modified-indicator" title="${title}">M</span>`;
     } else if (requestsWithModifiedVersions.has(request.id)) {
       sourceIndicator = '<span class="source-indicator original-with-mods-indicator" title="Has modified versions">+</span>';
     }
@@ -349,20 +353,29 @@ function selectRequest(requestId) {
   if (existingRelInfo) {
     existingRelInfo.remove();
   }
-  
-  try {
-    if (isModified && parentRequest) {
+    try {
+    if (isModified) {
       const relInfo = document.createElement("div");
       relInfo.classList.add("relationship-info");
-      relInfo.innerHTML = `
-        <span>Modified from original request:</span>
-        <a class="parent-link" data-id="${request.parentId}" title="View original request">View original</a>
-      `;
+      
+      if (parentRequest) {
+        relInfo.innerHTML = `
+          <span>Modified from original request:</span>
+          <a class="parent-link" data-id="${request.parentId}" title="View original request">View original</a>
+        `;
+      } else if (request.parentId) {
+        // Parent exists in the ID but not in the actual requests (was deleted)
+        relInfo.innerHTML = `
+          <span>Modified from original request:</span>
+          <span class="deleted-parent" title="Original request was deleted">Original deleted</span>
+        `;
+      }
+      
       const tabsElement = requestPanel.querySelector(".tabs");
       if (tabsElement) {
         requestPanel.insertBefore(relInfo, tabsElement);
         
-        // Add click handler for parent link
+        // Add click handler for parent link if parent exists
         const parentLink = relInfo.querySelector(".parent-link");
         if (parentLink) {
           parentLink.addEventListener("click", (e) => {
@@ -563,6 +576,81 @@ modifyResendButton.addEventListener("click", () => {
 
   // Show modal
   modifyModal.style.display = "block";
+});
+
+// Delete Request functionality
+deleteRequestButton.addEventListener("click", () => {
+  const request = requests.find((req) => req.id === selectedRequestId);
+  if (!request) {
+    alert("No request selected");
+    return;
+  }
+  if (confirm(`Are you sure you want to delete this ${request.method} request to ${request.url}?`)) {
+    // Track which request IDs should be deleted
+    const requestsToDelete = new Set([request.id]);
+    
+    // Check if the request is a parent request with modified versions
+    const modifiedVersions = requests.filter(req => req.parentId === request.id);
+    
+    if (modifiedVersions.length > 0 && request.source === "page") {
+      const deleteChildren = confirm(`This request has ${modifiedVersions.length} modified version(s). Delete those as well?`);
+      
+      if (deleteChildren) {
+        // Add child IDs to the delete set
+        modifiedVersions.forEach(modReq => {
+          requestsToDelete.add(modReq.id);
+        });
+      } else {
+        // Keep modified versions but mark them as orphaned
+        modifiedVersions.forEach(modReq => {
+          modReq.originalDeleted = true;
+        });
+      }
+    }
+    
+    // If this is a modified request, update the parent's status if needed
+    if (request.source === "modified" && request.parentId) {
+      const parent = requests.find(req => req.id === request.parentId);
+      if (parent) {
+        // Check if there are other modified versions of the parent
+        const otherModifications = requests.filter(req => 
+          req.parentId === request.parentId && req.id !== request.id
+        );
+        
+        // If this was the last modified version, update the parent
+        if (otherModifications.length === 0) {
+          // No need to mark the parent in any way - the rendering code will detect this
+        }
+      }
+    }
+    
+    // Remove only the requests that should be deleted
+    requests = requests.filter(req => !requestsToDelete.has(req.id));
+    
+    // If the selected request is being deleted, clear the selection
+    if (selectedRequestId === request.id) {
+      selectedRequestId = null;
+      
+      // Clear details panel
+      reqMethod.textContent = "-";
+      reqUrl.textContent = "-";
+      reqHeadersPre.textContent = "";
+      reqBodyPre.textContent = "";
+      respStatus.textContent = "-";
+      respHeadersPre.textContent = "";
+      respBodyPre.textContent = "";
+      
+      // Remove any relationship info
+      const requestPanel = document.querySelector(".request-panel");
+      const existingRelInfo = requestPanel?.querySelector(".relationship-info");
+      if (existingRelInfo) {
+        existingRelInfo.remove();
+      }
+    }
+    
+    // Re-render the requests list
+    renderRequestsList();
+  }
 });
 
 // Close modal when clicking the close button

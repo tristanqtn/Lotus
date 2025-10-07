@@ -341,6 +341,16 @@ pre {
   color: black;
 }
 
+#delete-request {
+  background-color: var(--lotus-red);
+  color: white;
+}
+
+#delete-request:hover {
+  background-color: var(--lotus-pink);
+  color: white;
+}
+
 /* Status colors */
 .status-2xx {
   color: var(--lotus-green);
@@ -631,6 +641,11 @@ pre {
 
 .relationship-info a:hover {
   color: var(--lotus-cyan);
+}
+
+.relationship-info .deleted-parent {
+  color: var(--lotus-red);
+  font-style: italic;
 }
 
 /* Child request styles for grouping */

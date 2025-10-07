@@ -7,7 +7,10 @@ This tool has been created for lazy security guys like me that needs to quickly 
 > [!NOTE] 
 > This tool has been greatly inspired by other tools like Postman and Burp Suite and it does not aim to replace them. It is meant to be a lightweight alternative for quick tasks directly in the browser.
 
-![Lotus Screenshot](./assets/screenshot.png)
+> [!NOTE]
+> I had the idea of creating this tool while working on some CTF challenge where I needed to quickly manipulate and resend API requests. I wanted something lightweight that would integrate directly into my browser workflow without the overhead of larger tools. Thus, Lotus was born to fill that niche for quick and easy API request manipulation.
+
+![Lotus Screenshot](./assets/screenshot_1.png)
 
 ## Features
 

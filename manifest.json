@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Lotus",
-  "version": "2.0",
+  "version": "2.1.0",
   "description": "Capture and replay network requests in DevTools.",
   "permissions": ["webRequest", "storage", "declarativeNetRequest"],
   "host_permissions": ["<all_urls>"],
@@ -9,5 +9,10 @@
   "devtools_page": "devtools.html",
   "action": {
     "default_popup": "popup.html"
+  },
+  "icons": {
+    "16": "assets/icon.png",
+    "48": "assets/icon.png",
+    "128": "assets/icon.png"
   }
 }
