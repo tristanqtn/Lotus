@@ -526,3 +526,59 @@ pre {
 .format-toggle:hover {
   opacity: 0.9;
 }
+
+/* Format type dropdown styles */
+.format-type-dropdown {
+  position: relative;
+  display: inline-block;
+  margin-left: 10px;
+}
+
+.format-type-button {
+  background: var(--lotus-current-line);
+  color: var(--lotus-foreground);
+  border: 1px solid var(--lotus-border);
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+}
+
+.format-type-button:hover {
+  background: var(--lotus-selection);
+}
+
+.format-type-options {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: 100%;
+  background: var(--lotus-background);
+  border: 1px solid var(--lotus-border);
+  border-radius: 4px;
+  min-width: 120px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+  z-index: 10;
+}
+
+.format-type-dropdown:hover .format-type-options {
+  display: block;
+}
+
+.format-option {
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--lotus-foreground);
+}
+
+.format-option:hover {
+  background: var(--lotus-selection);
+}
+
+.format-option.active {
+  background: var(--lotus-primary);
+  color: white;
+}

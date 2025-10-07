@@ -1,0 +1,91 @@
+name: Release Extension
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - '**.md'
+      - '.gitignore'
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '16'
+          cache: 'npm'
+          
+      - name: Install dependencies
+        run: npm ci || npm install
+        
+      - name: Lint code
+        run: npm run lint
+        
+      # Placeholder for future test step
+      - name: Run tests
+        run: npm test
+
+  build-and-release:
+    needs: validate
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '16'
+          
+      - name: Get version from manifest
+        id: get_version
+        run: |
+          VERSION=$(node -p "require('./manifest.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          
+      - name: Check if tag exists
+        id: check_tag
+        run: |
+          if git rev-parse "v${{ steps.get_version.outputs.version }}" >/dev/null 2>&1; then
+            echo "Tag exists, incrementing patch version"
+            PATCH=$(echo ${{ steps.get_version.outputs.version }} | awk -F. '{print $3}')
+            PATCH=$((PATCH+1))
+            BASE_VERSION=$(echo ${{ steps.get_version.outputs.version }} | awk -F. '{print $1"."$2}')
+            NEW_VERSION="$BASE_VERSION.$PATCH"
+            echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+            echo "skip=false" >> $GITHUB_OUTPUT
+          else
+            echo "Tag doesn't exist, using original version"
+            echo "version=${{ steps.get_version.outputs.version }}" >> $GITHUB_OUTPUT
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+        
+      - name: Pack extension
+        id: pack_extension
+        if: steps.check_tag.outputs.skip != 'true'
+        run: |
+          mkdir -p dist
+          zip -r "dist/lotus-v${{ steps.check_tag.outputs.version }}.zip" background.js devtools.html devtools.js lib/ LICENSE manifest.json panel.css panel.html panel.js popup.html README.md
+          echo "zip_path=dist/lotus-v${{ steps.check_tag.outputs.version }}.zip" >> $GITHUB_OUTPUT
+          
+      - name: Create Release
+        id: create_release
+        if: steps.check_tag.outputs.skip != 'true'
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ steps.check_tag.outputs.version }}
+          name: Release v${{ steps.check_tag.outputs.version }}
+          draft: false
+          prerelease: false
+          files: ${{ steps.pack_extension.outputs.zip_path }}
+          generate_release_notes: true

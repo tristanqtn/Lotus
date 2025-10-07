@@ -1,6 +1,12 @@
 # Lotus 🪷
 
-Lotus is a powerful browser extension for capturing, examining, modifying, and replaying API requests directly in your browser's DevTools. It helps developers debug API interactions, test endpoints, and streamline API-related workflows.
+Lotus is a powerful browser extension for capturing, examining, modifying, and replaying web requests directly in your browser's DevTools. 
+
+This tool has been created for lazy security guys like me that needs to quickly inspect and manipulate web requests without leaving the browser nor spining up Burp Suite or Postman. 
+
+> [!NOTE] 
+> This tool has been greatly inspired by other tools like Postman and Burp Suite and it does not aim to replace them. It is meant to be a lightweight alternative for quick tasks directly in the browser.
+
 
 ## Features
 
@@ -137,6 +143,64 @@ If you're not seeing API requests in Lotus:
 - For CORS-related issues, remember that Lotus can only access what the browser's Network API provides
 - Large response bodies might be truncated in the display
 - For secure contexts (https), more request data is available than for insecure contexts
+
+## Development
+
+### CI/CD Pipelines
+
+Lotus uses GitHub Actions for automation, providing the following CI/CD pipelines:
+
+#### Automated Testing & Linting
+- Runs on every push and pull request
+- Validates code quality and style
+- Ensures tests pass before merging
+
+#### Automated Releases
+- When code is pushed to the main branch, a new release is created automatically
+- The version number is taken from the `manifest.json` file
+- The extension is packaged into a ZIP file and attached to the GitHub release
+- Release notes are generated automatically from commit messages
+
+#### Security Scanning
+- Weekly security audits for dependencies
+- Runs on every push to main branch
+- Flags potential security issues
+
+#### Dependency Updates
+- Weekly automated checks for outdated dependencies
+- Creates pull requests for updates when needed
+
+### Creating a New Release
+
+To create a new release:
+
+#### Automatic Method
+1. Use the version bump script:
+   ```
+   node scripts/bump-version.js [major|minor|patch]
+   ```
+   This will update the version in both `manifest.json` and `package.json`
+
+2. Commit and push your changes to the main branch:
+   ```
+   git commit -am "Bump version to x.x.x"
+   git push origin main
+   ```
+
+3. GitHub Actions will automatically:
+   - Run tests and linting
+   - Build the extension package
+   - Create a GitHub release with the package attached
+   - Generate release notes from commit messages
+
+#### Manual Method
+1. Update the version in `manifest.json`
+2. Update the version in `package.json`
+3. Push your changes to the main branch
+
+### Contributing
+
+Please see [CONTRIBUTING.md](./CONTRIBUTING.md) for details on how to contribute to this project.
 
 ## Credits
 

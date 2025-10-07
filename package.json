@@ -1,0 +1,35 @@
+{
+  "name": "lotus-extension",
+  "version": "1.0.0",
+  "description": "Lotus - API Replay Tool for Chrome",
+  "private": true,  "scripts": {
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "build": "mkdir -p dist && zip -r dist/lotus.zip background.js devtools.html devtools.js lib/ LICENSE manifest.json panel.css panel.html panel.js popup.html README.md",
+    "build:win": "if not exist dist mkdir dist && powershell Compress-Archive -Force -Path background.js,devtools.html,devtools.js,lib,LICENSE,manifest.json,panel.css,panel.html,panel.js,popup.html,README.md -DestinationPath dist/lotus.zip",
+    "test": "echo \"No tests implemented yet\"",
+    "watch": "chokidar \"**/*.js\" \"**/*.html\" \"**/*.css\" -c \"npm run build\"",
+    "audit:fix": "npm audit fix",
+    "version": "node -e \"const fs = require('fs'); const manifest = require('./manifest.json'); const pkg = require('./package.json'); manifest.version = pkg.version; fs.writeFileSync('./manifest.json', JSON.stringify(manifest, null, 2) + '\\n');\""
+  },  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tristanqtn/Lotus.git"
+  },
+  "keywords": [
+    "chrome-extension",
+    "api",
+    "network",
+    "devtools"
+  ],
+  "author": "",
+  "license": "MIT",  "bugs": {
+    "url": "https://github.com/tristanqtn/Lotusissues"
+  },
+  "homepage": "https://github.com/tristanqtn/Lotus#readme",
+  "devDependencies": {
+    "eslint": "^8.44.0",
+    "eslint-config-prettier": "^8.8.0",
+    "eslint-plugin-prettier": "^5.0.0",
+    "prettier": "^3.0.0"
+  }
+}

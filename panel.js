@@ -504,6 +504,12 @@ let requestFormattingState = {
   resp: true, // true = pretty, false = raw
 };
 
+// Format type state (json, xml, html, js, css)
+let requestFormatType = {
+  req: "json",
+  resp: "json",
+};
+
 // Original content storage for raw mode
 let originalContent = {
   reqHeaders: "",
@@ -552,11 +558,57 @@ formatToggles.forEach((toggle) => {
   });
 });
 
-// Toggle between raw and pretty formatting
+// Format type dropdown functionality
+const formatTypeButtons = document.querySelectorAll(".format-type-button");
+const formatOptions = document.querySelectorAll(".format-option");
+
+// Load saved format type preferences
+const savedReqFormat = localStorage.getItem("lotus-req-format-type");
+const savedRespFormat = localStorage.getItem("lotus-resp-format-type");
+
+if (savedReqFormat) {
+  requestFormatType.req = savedReqFormat;
+}
+if (savedRespFormat) {
+  requestFormatType.resp = savedRespFormat;
+}
+
+// Initialize format type buttons text
+formatTypeButtons.forEach((button) => {
+  const target = button.dataset.target;
+  button.textContent = `Format: ${requestFormatType[target].toUpperCase()}`;
+});
+
+// Add click handlers for format options
+formatOptions.forEach((option) => {
+  option.addEventListener("click", () => {
+    const target = option.dataset.target;
+    const format = option.dataset.format;
+
+    // Update format type state
+    requestFormatType[target] = format;
+
+    // Update button text
+    const button = document.querySelector(
+      `.format-type-button[data-target="${target}"]`
+    );
+    button.textContent = `Format: ${format.toUpperCase()}`;
+
+    // Save preference to localStorage
+    localStorage.setItem(`lotus-${target}-format-type`, format);
+
+    // Apply formatting if in pretty mode
+    if (requestFormattingState[target] && selectedRequestId) {
+      toggleFormatting(target);
+    }
+  });
+});
+
+// Toggle between raw and pretty formatting with format type support
 function toggleFormatting(target) {
   if (target === "req") {
     if (requestFormattingState.req) {
-      // Pretty format
+      // Pretty format with selected format type
       prettifyContent("reqHeaders", originalContent.reqHeaders);
       prettifyContent("reqBody", originalContent.reqBody);
     } else {
@@ -566,7 +618,7 @@ function toggleFormatting(target) {
     }
   } else if (target === "resp") {
     if (requestFormattingState.resp) {
-      // Pretty format
+      // Pretty format with selected format type
       prettifyContent("respHeaders", originalContent.respHeaders);
       prettifyContent("respBody", originalContent.respBody);
     } else {
@@ -582,24 +634,111 @@ function prettifyContent(targetId, content) {
   const preElement = document.querySelector(`#${targetId} pre`);
   if (!preElement) return;
 
+  // Get the target type (req or resp)
+  const targetType = targetId.startsWith("req") ? "req" : "resp";
+  const formatType = requestFormatType[targetType];
+
   try {
     if (targetId.includes("Headers")) {
-      // For headers, try to parse as JSON and format
+      // For headers, always format as JSON
       const obj = typeof content === "object" ? content : JSON.parse(content);
       preElement.textContent = JSON.stringify(obj, null, 2);
     } else if (targetId.includes("Body")) {
-      // For body, try to detect JSON and format
-      try {
-        if (typeof content === "string" && content.trim() === "") {
-          preElement.textContent = "";
-          return;
-        }
+      // For body, use the selected format type
+      if (typeof content === "string" && content.trim() === "") {
+        preElement.textContent = "";
+        return;
+      }
 
-        const obj = typeof content === "object" ? content : JSON.parse(content);
-        preElement.textContent = JSON.stringify(obj, null, 2);
-      } catch (e) {
-        // Not valid JSON, just show the content
-        preElement.textContent = content;
+      // Remove any previous syntax highlighting classes
+      preElement.className = "";
+
+      switch (formatType) {
+        case "json":
+          try {
+            const obj =
+              typeof content === "object" ? content : JSON.parse(content);
+            preElement.textContent = JSON.stringify(obj, null, 2);
+            preElement.classList.add("language-json");
+          } catch (e) {
+            // Not valid JSON, show as text
+            preElement.textContent = content;
+          }
+          break;
+
+        case "xml":
+          try {
+            // Simple XML formatting with indentation
+            if (typeof content === "string" && content.includes("<")) {
+              // Basic XML pretty printing
+              preElement.textContent = formatXML(content);
+              preElement.classList.add("language-xml");
+            } else {
+              preElement.textContent = content;
+            }
+          } catch (e) {
+            preElement.textContent = content;
+          }
+          break;
+
+        case "html":
+          try {
+            // Simple HTML formatting
+            if (typeof content === "string" && content.includes("<")) {
+              preElement.textContent = formatXML(content); // HTML can use the same formatter
+              preElement.classList.add("language-html");
+            } else {
+              preElement.textContent = content;
+            }
+          } catch (e) {
+            preElement.textContent = content;
+          }
+          break;
+
+        case "js":
+          try {
+            // For JavaScript, we attempt to format it
+            if (typeof content === "string") {
+              // Try to evaluate and format as an object if it's valid JS
+              try {
+                // This is unsafe but it's just for formatting display
+                const obj = new Function(`return ${content}`)();
+                preElement.textContent =
+                  typeof obj === "object"
+                    ? JSON.stringify(obj, null, 2)
+                    : content;
+              } catch (e) {
+                // Just display as is if we can't format it
+                preElement.textContent = content;
+              }
+              preElement.classList.add("language-javascript");
+            } else {
+              preElement.textContent = JSON.stringify(content, null, 2);
+            }
+          } catch (e) {
+            preElement.textContent = content;
+          }
+          break;
+
+        case "css":
+          try {
+            // Simple CSS formatting
+            if (typeof content === "string" && content.includes("{")) {
+              // Basic CSS formatting
+              preElement.textContent = formatCSS(content);
+              preElement.classList.add("language-css");
+            } else {
+              preElement.textContent = content;
+            }
+          } catch (e) {
+            preElement.textContent = content;
+          }
+          break;
+
+        default:
+          // Default to displaying as is
+          preElement.textContent =
+            typeof content === "string" ? content : JSON.stringify(content);
       }
     }
   } catch (e) {
@@ -607,6 +746,46 @@ function prettifyContent(targetId, content) {
     preElement.textContent =
       typeof content === "string" ? content : JSON.stringify(content, null, 2);
   }
+}
+
+// Format XML/HTML with indentation
+function formatXML(xml) {
+  let formatted = "";
+  let indent = "";
+  const tab = "  "; // 2 spaces
+
+  xml = xml.trim().replace(/(>)(<)(\/*)/g, "$1\n$2$3");
+  xml.split(/\n/).forEach((line) => {
+    if (line.match(/^<\/\w/)) {
+      // If this line is a closing tag, decrease indent
+      indent = indent.substring(tab.length);
+    }
+
+    formatted += indent + line + "\n";
+
+    if (line.match(/^<\w[^>]*[^\/]>.*$/)) {
+      // If this line is an opening tag, increase indent
+      indent += tab;
+    }
+  });
+
+  return formatted.trim();
+}
+
+// Simple CSS formatter
+function formatCSS(css) {
+  // Replace } with }\n to create line breaks
+  let formatted = css
+    .replace(/\}/g, "}\n")
+    .replace(/\{/g, " {\n  ")
+    .replace(/\;/g, ";\n  ")
+    .replace(/\n  \}/g, "\n}")
+    .replace(/\,[\r\n\s]+/g, ", ");
+
+  // Remove multiple line breaks
+  formatted = formatted.replace(/\n\s*\n/g, "\n");
+
+  return formatted;
 }
 
 // Show raw unformatted content
