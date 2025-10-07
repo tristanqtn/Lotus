@@ -7,6 +7,7 @@ This tool has been created for lazy security guys like me that needs to quickly 
 > [!NOTE] 
 > This tool has been greatly inspired by other tools like Postman and Burp Suite and it does not aim to replace them. It is meant to be a lightweight alternative for quick tasks directly in the browser.
 
+![Lotus Screenshot](./assets/screenshot.png)
 
 ## Features
 
@@ -18,8 +19,19 @@ This tool has been created for lazy security guys like me that needs to quickly 
 - 🔁 **Modify & Resend**: Edit captured requests and resend them to test API endpoints.
 - 🌓 **Light/Dark Mode**: Switch between light and dark themes based on your preference.
 - 🔄 **Raw/Pretty Toggle**: View response data in raw format or beautifully formatted JSON.
+- 🔗 **Request Relationships**: Track parent-child relationships between original and modified requests.
+- 👥 **Request Grouping**: Toggle between flat view and hierarchical view for related requests.
 
 ## New Features
+
+### Request Relationship Tracking
+
+Lotus now provides a powerful way to track relationships between original requests and their modified versions:
+
+- 🔗 **Visual Indicators**: Modified requests and their originals are clearly marked with color-coded borders and icons
+- 📋 **Parent-Child Relationships**: Navigate easily between original requests and their modified versions
+- 📊 **Grouping**: Toggle between flat view and hierarchical view to organize related requests
+- 🔄 **Source Tracking**: Requests are labeled based on their source (page or modified)
 
 ### Modify & Resend
 
@@ -41,6 +53,23 @@ Toggle between pretty-formatted and raw data views:
 
 - **Pretty**: JSON data is automatically formatted with proper indentation and syntax highlighting
 - **Raw**: See the exact data as sent or received over the wire, ideal for debugging serialization issues
+
+### Request Relationship Features (v2.0)
+
+The new relationship tracking system helps you keep track of original requests and their modified versions:
+
+- **Visual Indicators**: 
+  - Modified requests are marked with a pink border and an "M" badge
+  - Original requests with modifications have a cyan border and a "+" badge
+  
+- **Relationship Navigation**:
+  - When viewing a modified request, you can quickly navigate to its original request
+  - When viewing an original request with modifications, you can see and navigate to all its modified versions
+  
+- **Request Grouping**:
+  - Toggle between flat view and hierarchical view with the "Group Related" button
+  - In grouped view, modified requests appear indented under their original requests
+  - Visual connecting lines show the relationship between parent and child requests
 
 ## Browser Compatibility
 

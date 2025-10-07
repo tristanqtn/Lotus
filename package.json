@@ -1,6 +1,6 @@
 {
   "name": "lotus-extension",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Lotus - API Replay Tool for Chrome",
   "private": true,  "scripts": {
     "lint": "eslint .",
