@@ -12,7 +12,7 @@
     "no-unused-vars": "warn",
     "no-console": "off",
     "indent": "off",
-    "quotes": "warn",
+    "quotes": ["warn", "double", { "avoidEscape": true, "allowTemplateLiterals": true }],
     "semi": ["error", "always"],
     "no-empty": "warn",
     "no-useless-escape": "warn",
