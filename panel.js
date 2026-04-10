@@ -233,7 +233,7 @@ function renderRequestsList() {
       <div class="request-url">${escapeHtml(urlDisplay)}</div>
       <div class="request-meta">
         ${sourceIndicator}
-        <span class="method">${escapeHtml(request.method)}</span>
+        <span class="method" data-method="${escapeHtml(request.method)}">${escapeHtml(request.method)}</span>
         <span class="time">${escapeHtml(time)}</span>
         <span class="status ${getStatusClass(request.statusCode)}">${
       request.statusCode || "-"
@@ -286,7 +286,7 @@ function renderRequestsList() {
               <div class="request-url">${escapeHtml(childUrlDisplay)}</div>
               <div class="request-meta">
                 <span class="source-indicator modified-indicator" title="Modified request">M</span>
-                <span class="method">${escapeHtml(childRequest.method)}</span>
+                <span class="method" data-method="${escapeHtml(childRequest.method)}">${escapeHtml(childRequest.method)}</span>
                 <span class="time">${escapeHtml(childTime)}</span>
                 <span class="status ${getStatusClass(childRequest.statusCode)}">${
               childRequest.statusCode || "-"
@@ -755,7 +755,7 @@ formatToggles.forEach((toggle) => {
   });
 });
 
-// Format type dropdown
+// Format type dropdown — click-toggled
 const formatTypeButtons = document.querySelectorAll(".format-type-button");
 const formatOptions = document.querySelectorAll(".format-option");
 
@@ -765,22 +765,50 @@ const savedRespFormat = localStorage.getItem("lotus-resp-format-type");
 if (savedReqFormat) requestFormatType.req = savedReqFormat;
 if (savedRespFormat) requestFormatType.resp = savedRespFormat;
 
+// Set button labels and wire up open/close toggle
 formatTypeButtons.forEach((button) => {
   const target = button.dataset.target;
   button.textContent = `Format: ${requestFormatType[target].toUpperCase()}`;
+
+  button.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const dropdown = button.closest(".format-type-dropdown");
+    const isOpen = dropdown.classList.contains("open");
+    document.querySelectorAll(".format-type-dropdown.open").forEach((d) => d.classList.remove("open"));
+    if (!isOpen) dropdown.classList.add("open");
+  });
+});
+
+// Mark the initially-active option for each group
+formatOptions.forEach((option) => {
+  if (option.dataset.format === requestFormatType[option.dataset.target]) {
+    option.classList.add("active");
+  }
+});
+
+// Close all dropdowns when clicking elsewhere
+document.addEventListener("click", () => {
+  document.querySelectorAll(".format-type-dropdown.open").forEach((d) => d.classList.remove("open"));
 });
 
 formatOptions.forEach((option) => {
-  option.addEventListener("click", () => {
+  option.addEventListener("click", (e) => {
+    e.stopPropagation();
     const target = option.dataset.target;
     const format = option.dataset.format;
 
     requestFormatType[target] = format;
 
-    const button = document.querySelector(
-      `.format-type-button[data-target="${target}"]`
-    );
+    // Update button label
+    const button = document.querySelector(`.format-type-button[data-target="${target}"]`);
     button.textContent = `Format: ${format.toUpperCase()}`;
+
+    // Update active state within this group
+    document.querySelectorAll(`.format-option[data-target="${target}"]`).forEach((o) => o.classList.remove("active"));
+    option.classList.add("active");
+
+    // Close the dropdown
+    option.closest(".format-type-dropdown").classList.remove("open");
 
     localStorage.setItem(`lotus-${target}-format-type`, format);
 
@@ -811,7 +839,8 @@ function toggleFormatting(target) {
 }
 
 function prettifyContent(targetId, content) {
-  const preElement = document.querySelector(`#${targetId} pre`);
+  const elementId = targetId.replace(/([A-Z])/g, "-$1").toLowerCase();
+  const preElement = document.querySelector(`#${elementId} pre`);
   if (!preElement) return;
 
   const targetType = targetId.startsWith("req") ? "req" : "resp";
@@ -933,7 +962,8 @@ function formatCSS(css) {
 }
 
 function showRawContent(targetId, content) {
-  const preElement = document.querySelector(`#${targetId} pre`);
+  const elementId = targetId.replace(/([A-Z])/g, "-$1").toLowerCase();
+  const preElement = document.querySelector(`#${elementId} pre`);
   if (!preElement) return;
 
   if (targetId.includes("Headers")) {
