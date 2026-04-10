@@ -4,8 +4,6 @@ A Chrome DevTools extension for capturing, inspecting, modifying, and replaying 
 
 Built for developers and security folks who need quick request manipulation without spinning up Burp Suite or Postman.
 
-![Lotus Screenshot](./assets/screenshot_1.png)
-
 ## Features
 
 | Feature | Description |
