@@ -4,6 +4,8 @@ let requests = {};
 let ports = {};
 // Temporary storage for request details being assembled
 let requestDetails = {};
+// Per-tab capture state: absent/true = capturing, false = paused
+const captureState = {};
 // Maximum number of requests to keep per tab
 const MAX_REQUESTS_PER_TAB = 1000;
 
@@ -19,15 +21,23 @@ chrome.storage.local.get(["lotusRequests"], (result) => {
   }
 });
 
+// Clean up data when a tab is closed to prevent unbounded storage growth
+chrome.tabs.onRemoved.addListener((tabId) => {
+  const id = String(tabId);
+  if (requests[id]) {
+    delete requests[id];
+    chrome.storage.local.set({ lotusRequests: requests });
+    log("Cleaned up requests for closed tab", id);
+  }
+  delete captureState[id];
+});
+
 // Capture request body
 chrome.webRequest.onBeforeRequest.addListener(
   (details) => {
     if (details.tabId < 0) return;
     const requestId = details.requestId;
-
-    if (!requestDetails[requestId]) {
-      requestDetails[requestId] = {};
-    }
+    if (!requestDetails[requestId]) requestDetails[requestId] = {};
     requestDetails[requestId].requestBody = details.requestBody;
   },
   { urls: ["<all_urls>"] },
@@ -39,10 +49,7 @@ chrome.webRequest.onBeforeSendHeaders.addListener(
   (details) => {
     if (details.tabId < 0) return;
     const requestId = details.requestId;
-
-    if (!requestDetails[requestId]) {
-      requestDetails[requestId] = {};
-    }
+    if (!requestDetails[requestId]) requestDetails[requestId] = {};
     requestDetails[requestId].requestHeaders = details.requestHeaders;
   },
   { urls: ["<all_urls>"] },
@@ -54,10 +61,7 @@ chrome.webRequest.onHeadersReceived.addListener(
   (details) => {
     if (details.tabId < 0) return;
     const requestId = details.requestId;
-
-    if (!requestDetails[requestId]) {
-      requestDetails[requestId] = {};
-    }
+    if (!requestDetails[requestId]) requestDetails[requestId] = {};
     requestDetails[requestId].responseHeaders = details.responseHeaders;
   },
   { urls: ["<all_urls>"] },
@@ -78,6 +82,12 @@ chrome.webRequest.onCompleted.addListener(
     if (details.tabId < 0) return;
     const tabId = String(details.tabId);
     const requestId = details.requestId;
+
+    // Respect per-tab pause state
+    if (captureState[tabId] === false) {
+      delete requestDetails[requestId];
+      return;
+    }
 
     const reqDetails = requestDetails[requestId] || {};
 
@@ -102,7 +112,6 @@ chrome.webRequest.onCompleted.addListener(
       const contentTypeHeader = reqDetails.responseHeaders?.find(
         (h) => h.name.toLowerCase() === "content-type"
       );
-
       const isTextBased =
         contentTypeHeader &&
         (contentTypeHeader.value.includes("json") ||
@@ -110,7 +119,6 @@ chrome.webRequest.onCompleted.addListener(
           contentTypeHeader.value.includes("xml") ||
           contentTypeHeader.value.includes("javascript") ||
           contentTypeHeader.value.includes("html"));
-
       const shouldCaptureBody =
         isTextBased &&
         details.method === "GET" &&
@@ -118,7 +126,7 @@ chrome.webRequest.onCompleted.addListener(
         details.statusCode < 300;
 
       if (shouldCaptureBody) {
-        const BODY_LIMIT = 512 * 1024; // 512 KB cap per response
+        const BODY_LIMIT = 512 * 1024;
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 5000);
 
@@ -147,7 +155,6 @@ chrome.webRequest.onCompleted.addListener(
             const requestIndex = storedRequests.findIndex(
               (r) => r.requestId === requestId
             );
-
             if (requestIndex !== -1) {
               storedRequests[requestIndex].responseBody = truncated;
               chrome.storage.local.set({ lotusRequests: requests });
@@ -168,15 +175,10 @@ chrome.webRequest.onCompleted.addListener(
       log("Error attempting to capture response body", err);
     }
 
-    // Store the request
-    if (!requests[tabId]) {
-      requests[tabId] = [];
-    }
-
+    if (!requests[tabId]) requests[tabId] = [];
     if (requests[tabId].length >= MAX_REQUESTS_PER_TAB) {
       requests[tabId] = requests[tabId].slice(-MAX_REQUESTS_PER_TAB + 1);
     }
-
     requests[tabId].push(request);
     chrome.storage.local.set({ lotusRequests: requests });
 
@@ -184,7 +186,6 @@ chrome.webRequest.onCompleted.addListener(
       ports[tabId].postMessage({ type: "NEW", data: request });
     }
 
-    // Clean up to avoid memory leaks
     delete requestDetails[requestId];
   },
   { urls: ["<all_urls>"] }
@@ -200,7 +201,11 @@ chrome.runtime.onConnect.addListener((port) => {
   ports[tabId] = port;
   log("Panel connected", tabId);
 
-  port.postMessage({ type: "INIT", data: requests[tabId] || [] });
+  port.postMessage({
+    type: "INIT",
+    data: requests[tabId] || [],
+    capturing: captureState[tabId] !== false,
+  });
 
   port.onMessage.addListener((msg) => {
     if (msg.type === "CLEAR") {
@@ -209,15 +214,19 @@ chrome.runtime.onConnect.addListener((port) => {
       log("Cleared requests for tab", tabId);
     } else if (msg.type === "HEARTBEAT") {
       port.postMessage({ type: "HEARTBEAT_ACK" });
+    } else if (msg.type === "PAUSE") {
+      captureState[tabId] = false;
+      log("Capture paused for tab", tabId);
+    } else if (msg.type === "RESUME") {
+      captureState[tabId] = true;
+      log("Capture resumed for tab", tabId);
     } else if (msg.type === "DELETE") {
-      // Panel is deleting specific requests — persist the removal
       const ids = new Set(msg.ids || []);
       if (requests[tabId]) {
         requests[tabId] = requests[tabId].filter((r) => !ids.has(r.requestId));
         chrome.storage.local.set({ lotusRequests: requests });
       }
     } else if (msg.type === "STORE") {
-      // Panel created a modified/resent request — persist it
       if (msg.data) {
         if (!requests[tabId]) requests[tabId] = [];
         requests[tabId].push(msg.data);

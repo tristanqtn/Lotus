@@ -22,6 +22,13 @@
           Group Related
         </button>
         <button
+          id="pause-capture"
+          class="icon-button"
+          title="Pause request capture"
+        >
+          Pause
+        </button>
+        <button
           id="theme-toggle"
           class="icon-button"
           title="Toggle Light/Dark Mode"
@@ -33,6 +40,9 @@
 
     <div class="container">
       <div class="sidebar">
+        <div class="sidebar-header">
+          <span id="request-count" class="request-count">0 requests</span>
+        </div>
         <div id="requests-container">
           <div id="requests"></div>
         </div>
