@@ -19,7 +19,7 @@ chrome.storage.local.get(["lotusRequests"], (result) => {
   }
 });
 
-// Capture request headers and body
+// Capture request body
 chrome.webRequest.onBeforeRequest.addListener(
   (details) => {
     if (details.tabId < 0) return;
@@ -34,6 +34,7 @@ chrome.webRequest.onBeforeRequest.addListener(
   ["requestBody"]
 );
 
+// Capture request headers
 chrome.webRequest.onBeforeSendHeaders.addListener(
   (details) => {
     if (details.tabId < 0) return;
@@ -63,6 +64,14 @@ chrome.webRequest.onHeadersReceived.addListener(
   ["responseHeaders"]
 );
 
+// Clean up requestDetails for failed/cancelled requests to prevent memory leaks
+chrome.webRequest.onErrorOccurred.addListener(
+  (details) => {
+    delete requestDetails[details.requestId];
+  },
+  { urls: ["<all_urls>"] }
+);
+
 // Capture completed requests
 chrome.webRequest.onCompleted.addListener(
   (details) => {
@@ -70,10 +79,8 @@ chrome.webRequest.onCompleted.addListener(
     const tabId = String(details.tabId);
     const requestId = details.requestId;
 
-    // Get the stored request details
     const reqDetails = requestDetails[requestId] || {};
 
-    // Create a complete request object
     const request = {
       url: details.url,
       method: details.method,
@@ -84,55 +91,66 @@ chrome.webRequest.onCompleted.addListener(
       responseHeaders: reqDetails.responseHeaders || [],
       timestamp: new Date().toISOString(),
       requestId: requestId,
-    }; // Try to capture response body using fetch()
-    // This is a best-effort approach, may not work for all responses
+    };
+
+    // Try to capture response body using fetch() — GET requests only.
+    // Re-fetching non-GET requests would fire them a second time (side effects,
+    // double charges, CSRF token exhaustion). On pages with many concurrent
+    // requests the original approach spawned dozens of parallel fetches with no
+    // size cap, causing memory exhaustion in the service worker and browser crashes.
     try {
-      // Only attempt for certain content types and successful responses
       const contentTypeHeader = reqDetails.responseHeaders?.find(
         (h) => h.name.toLowerCase() === "content-type"
       );
 
-      // Check if it's a text-based content type we should try to capture
-      const shouldCaptureBody =
+      const isTextBased =
         contentTypeHeader &&
         (contentTypeHeader.value.includes("json") ||
           contentTypeHeader.value.includes("text") ||
           contentTypeHeader.value.includes("xml") ||
           contentTypeHeader.value.includes("javascript") ||
-          contentTypeHeader.value.includes("html")) &&
+          contentTypeHeader.value.includes("html"));
+
+      const shouldCaptureBody =
+        isTextBased &&
+        details.method === "GET" &&
         details.statusCode >= 200 &&
         details.statusCode < 300;
 
       if (shouldCaptureBody) {
-        // We'll use fetch to try to get the response body
-        // This is an async operation that will update the request later
+        const BODY_LIMIT = 512 * 1024; // 512 KB cap per response
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+
         fetch(details.url, {
-          method: details.method,
+          method: "GET",
           headers:
             reqDetails.requestHeaders?.reduce((obj, h) => {
               obj[h.name] = h.value;
               return obj;
             }, {}) || {},
-          body: reqDetails.requestBody
-            ? JSON.stringify(reqDetails.requestBody)
-            : undefined,
           credentials: "include",
+          signal: controller.signal,
         })
-          .then((response) => response.text())
+          .then((response) => {
+            clearTimeout(timeoutId);
+            return response.text();
+          })
           .then((responseBody) => {
-            // Find the request in storage and update it
+            const truncated =
+              responseBody.length > BODY_LIMIT
+                ? responseBody.slice(0, BODY_LIMIT) +
+                  "\n[truncated — response exceeded 512 KB]"
+                : responseBody;
+
             const storedRequests = requests[tabId] || [];
             const requestIndex = storedRequests.findIndex(
               (r) => r.requestId === requestId
             );
 
             if (requestIndex !== -1) {
-              storedRequests[requestIndex].responseBody = responseBody;
-
-              // Save to storage
+              storedRequests[requestIndex].responseBody = truncated;
               chrome.storage.local.set({ lotusRequests: requests });
-
-              // Notify panel if connected
               if (ports[tabId]) {
                 ports[tabId].postMessage({
                   type: "UPDATE",
@@ -142,6 +160,7 @@ chrome.webRequest.onCompleted.addListener(
             }
           })
           .catch((err) => {
+            clearTimeout(timeoutId);
             log("Failed to capture response body", err);
           });
       }
@@ -154,17 +173,13 @@ chrome.webRequest.onCompleted.addListener(
       requests[tabId] = [];
     }
 
-    // Limit the number of stored requests per tab
     if (requests[tabId].length >= MAX_REQUESTS_PER_TAB) {
       requests[tabId] = requests[tabId].slice(-MAX_REQUESTS_PER_TAB + 1);
     }
 
     requests[tabId].push(request);
-
-    // Save to persistent storage
     chrome.storage.local.set({ lotusRequests: requests });
 
-    // Send to panel if connected
     if (ports[tabId]) {
       ports[tabId].postMessage({ type: "NEW", data: request });
     }
@@ -180,22 +195,34 @@ chrome.runtime.onConnect.addListener((port) => {
   if (!port.name.startsWith("lotus-")) return;
 
   const tabId = port.name.split("-")[1];
+  if (!tabId || !/^\d+$/.test(tabId)) return;
+
   ports[tabId] = port;
   log("Panel connected", tabId);
 
-  // Send initial data to the panel
   port.postMessage({ type: "INIT", data: requests[tabId] || [] });
 
-  // Listen for messages from the panel
   port.onMessage.addListener((msg) => {
     if (msg.type === "CLEAR") {
       requests[tabId] = [];
-      // Update persistent storage
       chrome.storage.local.set({ lotusRequests: requests });
       log("Cleared requests for tab", tabId);
     } else if (msg.type === "HEARTBEAT") {
-      // Respond to heartbeat to confirm connection is alive
       port.postMessage({ type: "HEARTBEAT_ACK" });
+    } else if (msg.type === "DELETE") {
+      // Panel is deleting specific requests — persist the removal
+      const ids = new Set(msg.ids || []);
+      if (requests[tabId]) {
+        requests[tabId] = requests[tabId].filter((r) => !ids.has(r.requestId));
+        chrome.storage.local.set({ lotusRequests: requests });
+      }
+    } else if (msg.type === "STORE") {
+      // Panel created a modified/resent request — persist it
+      if (msg.data) {
+        if (!requests[tabId]) requests[tabId] = [];
+        requests[tabId].push(msg.data);
+        chrome.storage.local.set({ lotusRequests: requests });
+      }
     }
   });
 
