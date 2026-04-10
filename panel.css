@@ -730,3 +730,77 @@ pre {
   background: var(--d-overlay);
   color: var(--text);
 }
+
+/* ─── Sidebar header / request count ──────────────────────────────────────── */
+.sidebar-header {
+  padding: 4px 12px 4px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--raised);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  min-height: 24px;
+}
+
+.request-count {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+
+/* ─── Pause / resume button ────────────────────────────────────────────────── */
+#pause-capture.paused {
+  background: rgba(255, 184, 108, 0.15);
+  color: var(--d-orange);
+  border-color: rgba(255, 184, 108, 0.4);
+}
+
+#pause-capture.paused:hover {
+  background: rgba(255, 184, 108, 0.28);
+  border-color: var(--d-orange);
+}
+
+/* ─── Two-step confirm state ───────────────────────────────────────────────── */
+button.confirming {
+  background: rgba(255, 184, 108, 0.18) !important;
+  color: var(--d-orange) !important;
+  border-color: rgba(255, 184, 108, 0.45) !important;
+}
+
+/* ─── Toast notifications ──────────────────────────────────────────────────── */
+.toast {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  padding: 7px 13px;
+  background: var(--d-overlay);
+  color: var(--text);
+  border-radius: var(--radius);
+  font-size: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+  border: 1px solid var(--border-subtle);
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 0.18s, transform 0.18s;
+  z-index: 9999;
+  pointer-events: none;
+  max-width: 280px;
+}
+
+.toast.visible {
+  opacity: 1;
+  transform: none;
+}
+
+.toast.toast-error {
+  background: rgba(255, 85, 85, 0.18);
+  color: var(--d-red);
+  border-color: rgba(255, 85, 85, 0.35);
+}
+
+.toast.toast-success {
+  background: rgba(80, 250, 123, 0.13);
+  color: var(--d-green);
+  border-color: rgba(80, 250, 123, 0.3);
+}

@@ -1,3 +1,4 @@
+// filepath: c:\Users\trist\Playground\Lotus\panel.js
 import {
   toHeaderObject,
   formatRequestBody,
@@ -12,69 +13,130 @@ function escapeHtml(str) {
     .replace(/"/g, "&quot;");
 }
 
-// DOM Elements
-const requestsContainer = document.getElementById("requests");
-const filterInput = document.getElementById("filter");
-const clearButton = document.getElementById("clear");
-const copyCurlButton = document.getElementById("copy-curl");
+// ─── DOM references ────────────────────────────────────────────────────────
+const requestsContainer  = document.getElementById("requests");
+const filterInput        = document.getElementById("filter");
+const clearButton        = document.getElementById("clear");
+const copyCurlButton     = document.getElementById("copy-curl");
 const modifyResendButton = document.getElementById("modify-resend");
 const deleteRequestButton = document.getElementById("delete-request");
-const groupRelatedToggle = document.getElementById("group-related");
+const groupRelatedToggle  = document.getElementById("group-related");
+const pauseButton         = document.getElementById("pause-capture");
+const requestCountEl      = document.getElementById("request-count");
+const themeToggle         = document.getElementById("theme-toggle");
 
-// Modal elements
-const modifyModal = document.getElementById("modify-modal");
-const modalMethod = document.getElementById("modal-method");
-const modalUrl = document.getElementById("modal-url");
+// Modal
+const modifyModal  = document.getElementById("modify-modal");
+const modalMethod  = document.getElementById("modal-method");
+const modalUrl     = document.getElementById("modal-url");
 const modalHeaders = document.getElementById("modal-headers");
-const modalBody = document.getElementById("modal-body");
-const modalCancel = document.getElementById("modal-cancel");
-const modalSend = document.getElementById("modal-send");
+const modalBody    = document.getElementById("modal-body");
+const modalCancel  = document.getElementById("modal-cancel");
+const modalSend    = document.getElementById("modal-send");
 const closeModalBtn = document.querySelector(".close-modal");
 
-// Request details elements
-const reqMethod = document.getElementById("req-method");
-const reqUrl = document.getElementById("req-url");
+// Request details
+const reqMethod     = document.getElementById("req-method");
+const reqUrl        = document.getElementById("req-url");
 const reqHeadersPre = document.querySelector("#req-headers pre");
-const reqBodyPre = document.querySelector("#req-body pre");
+const reqBodyPre    = document.querySelector("#req-body pre");
 
-// Response details elements
-const respStatus = document.getElementById("resp-status");
+// Response details
+const respStatus     = document.getElementById("resp-status");
 const respHeadersPre = document.querySelector("#resp-headers pre");
-const respBodyPre = document.querySelector("#resp-body pre");
+const respBodyPre    = document.querySelector("#resp-body pre");
 
-// Tab switching
-const tabs = document.querySelectorAll(".tab");
-tabs.forEach((tab) => {
+// ─── Tab switching ──────────────────────────────────────────────────────────
+document.querySelectorAll(".tab").forEach((tab) => {
   tab.addEventListener("click", () => {
-    const siblingTabs = tab.parentElement.querySelectorAll(".tab");
-    siblingTabs.forEach((t) => t.classList.remove("active"));
-
+    tab.parentElement.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
     const container = tab.closest(".request-panel, .response-panel");
-    const panes = container.querySelectorAll(".tab-pane");
-    panes.forEach((p) => p.classList.remove("active"));
-
+    container.querySelectorAll(".tab-pane").forEach((p) => p.classList.remove("active"));
     tab.classList.add("active");
-    const targetId = tab.dataset.target;
-    document.getElementById(targetId).classList.add("active");
+    document.getElementById(tab.dataset.target).classList.add("active");
   });
 });
 
-// State
+// ─── State ─────────────────────────────────────────────────────────────────
 let currentTabId = String(chrome.devtools.inspectedWindow.tabId);
 let requests = [];
 let selectedRequestId = null;
 let port = null;
 let connectionHealthy = true;
 let heartbeatInterval = null;
+let captureEnabled = true;
 
-// Transform a raw request from the background script to the display format
+// Formatting state — declared early so pref loader can mutate before first render
+let isLightMode = false;
+let groupRelatedRequests = false;
+let requestFormattingState = { req: true, resp: true };
+let requestFormatType = { req: "json", resp: "json" };
+let originalContent = { reqHeaders: "", reqBody: "", respHeaders: "", respBody: "" };
+
+// ─── Toast notifications ────────────────────────────────────────────────────
+function showToast(message, type = "info") {
+  const toast = document.createElement("div");
+  toast.className = `toast${type !== "info" ? ` toast-${type}` : ""}`;
+  toast.textContent = message;
+  document.body.appendChild(toast);
+  requestAnimationFrame(() => toast.classList.add("visible"));
+  setTimeout(() => {
+    toast.classList.remove("visible");
+    setTimeout(() => toast.remove(), 220);
+  }, 2500);
+}
+
+// ─── Two-step confirm ───────────────────────────────────────────────────────
+const confirmPending = new Map();
+
+function requireConfirm(buttonEl, action) {
+  if (confirmPending.has(buttonEl)) {
+    const { timer, restore } = confirmPending.get(buttonEl);
+    clearTimeout(timer);
+    restore();
+    action();
+    return;
+  }
+  const originalText = buttonEl.textContent.trim();
+  buttonEl.textContent = "Confirm?";
+  buttonEl.classList.add("confirming");
+
+  const restore = () => {
+    buttonEl.textContent = originalText;
+    buttonEl.classList.remove("confirming");
+    confirmPending.delete(buttonEl);
+  };
+  const timer = setTimeout(restore, 3000);
+  confirmPending.set(buttonEl, { timer, restore });
+}
+
+function cancelAllConfirms() {
+  confirmPending.forEach(({ timer, restore }) => {
+    clearTimeout(timer);
+    restore();
+  });
+  confirmPending.clear();
+}
+
+// ─── Request count ──────────────────────────────────────────────────────────
+function updateRequestCount(total, visible) {
+  if (!requestCountEl) return;
+  if (visible < total) {
+    requestCountEl.textContent = `${visible} / ${total} requests`;
+  } else {
+    requestCountEl.textContent = `${total} request${total !== 1 ? "s" : ""}`;
+  }
+}
+
+// ─── Transform request ──────────────────────────────────────────────────────
 function transformRequest(req, index) {
   const id = req.requestId || `req-${index}`;
-
   return {
     ...req,
-    id: id,
-    statusCode: req.status,
+    id,
+    // Modified requests stored by the panel use statusCode; background-captured
+    // requests use status. Support both so panel reloads don't lose status.
+    statusCode: req.status ?? req.statusCode,
     requestHeaders: toHeaderObject(req.requestHeaders),
     responseHeaders: toHeaderObject(req.responseHeaders),
     time: new Date(req.timestamp || Date.now()).getTime(),
@@ -83,17 +145,12 @@ function transformRequest(req, index) {
   };
 }
 
-// Connect to background script
+// ─── Background connection ──────────────────────────────────────────────────
 function connectToBackgroundScript() {
   try {
     if (port) {
-      try {
-        port.disconnect();
-      } catch (e) {
-        console.log("Error disconnecting old port:", e);
-      }
+      try { port.disconnect(); } catch (e) { /* ignore */ }
     }
-
     if (heartbeatInterval) {
       clearInterval(heartbeatInterval);
       heartbeatInterval = null;
@@ -106,19 +163,19 @@ function connectToBackgroundScript() {
 
       if (message.type === "INIT") {
         requests = (message.data || []).map(transformRequest);
+        // Sync pause state from background
+        captureEnabled = message.capturing !== false;
+        updatePauseButton();
         renderRequestsList();
       } else if (message.type === "NEW") {
-        const newRequest = transformRequest(message.data);
-        requests.push(newRequest);
+        requests.push(transformRequest(message.data));
         renderRequestsList();
       } else if (message.type === "UPDATE") {
-        const updatedRequest = transformRequest(message.data);
-        const index = requests.findIndex((r) => r.id === updatedRequest.id);
-        if (index !== -1) {
-          requests[index] = updatedRequest;
-          if (selectedRequestId === updatedRequest.id) {
-            selectRequest(selectedRequestId);
-          }
+        const updated = transformRequest(message.data);
+        const idx = requests.findIndex((r) => r.id === updated.id);
+        if (idx !== -1) {
+          requests[idx] = updated;
+          if (selectedRequestId === updated.id) selectRequest(selectedRequestId);
         }
       } else if (message.type === "HEARTBEAT_ACK") {
         connectionHealthy = true;
@@ -127,25 +184,18 @@ function connectToBackgroundScript() {
 
     port.onDisconnect.addListener(() => {
       connectionHealthy = false;
-      console.log("Disconnected from background script. Attempting to reconnect...");
       setTimeout(connectToBackgroundScript, 1000);
     });
 
-    // Heartbeat to detect stale connections
     heartbeatInterval = setInterval(() => {
       if (!port) return;
       try {
         connectionHealthy = false;
         port.postMessage({ type: "HEARTBEAT" });
-
         setTimeout(() => {
-          if (!connectionHealthy) {
-            console.log("No heartbeat response, reconnecting...");
-            connectToBackgroundScript();
-          }
+          if (!connectionHealthy) connectToBackgroundScript();
         }, 5000);
       } catch (e) {
-        console.log("Error sending heartbeat:", e);
         connectToBackgroundScript();
       }
     }, 30000);
@@ -157,7 +207,7 @@ function connectToBackgroundScript() {
 
 connectToBackgroundScript();
 
-// Get status class for styling
+// ─── Helpers ────────────────────────────────────────────────────────────────
 function getStatusClass(status) {
   if (!status) return "";
   if (status >= 200 && status < 300) return "status-2xx";
@@ -167,26 +217,40 @@ function getStatusClass(status) {
   return "";
 }
 
-// Render the requests list
+function clearDetailsPanel() {
+  reqMethod.textContent = "-";
+  reqUrl.textContent = "-";
+  reqHeadersPre.textContent = "";
+  reqBodyPre.textContent = "";
+  respStatus.textContent = "-";
+  respHeadersPre.textContent = "";
+  respBodyPre.textContent = "";
+  const existingRelInfo = document.querySelector(".request-panel .relationship-info");
+  if (existingRelInfo) existingRelInfo.remove();
+}
+
+// ─── Render request list ────────────────────────────────────────────────────
 function renderRequestsList() {
   const filter = filterInput.value.trim().toLowerCase();
-  requestsContainer.innerHTML = "";
 
   const sortedRequests = [...requests].sort((a, b) => b.time - a.time);
 
-  const requestsWithModifiedVersions = new Set();
-
-  for (const request of sortedRequests) {
-    if (request.source === "modified" && request.parentId) {
-      requestsWithModifiedVersions.add(request.parentId);
+  // Build sets for relationship badges
+  const hasModifiedVersions = new Set();
+  for (const req of sortedRequests) {
+    if (req.source === "modified" && req.parentId) {
+      hasModifiedVersions.add(req.parentId);
     }
   }
+
+  // Build into a DocumentFragment — one DOM write at the end
+  const fragment = document.createDocumentFragment();
+  let visibleCount = 0;
 
   for (const request of sortedRequests) {
     if (groupRelatedRequests && request.source === "modified" && request.parentId) {
       continue;
     }
-
     if (
       filter &&
       !request.url.toLowerCase().includes(filter) &&
@@ -195,228 +259,164 @@ function renderRequestsList() {
       continue;
     }
 
-    const requestElement = document.createElement("div");
-    requestElement.classList.add("request-item");
-    requestElement.dataset.id = request.id;
+    visibleCount++;
+    fragment.appendChild(buildRequestItem(request, hasModifiedVersions));
 
-    if (request.source === "modified") {
-      requestElement.classList.add("modified-request");
-    } else if (requestsWithModifiedVersions.has(request.id)) {
-      requestElement.classList.add("has-modified-versions");
-    }
-
-    if (selectedRequestId === request.id) {
-      requestElement.classList.add("selected");
-    }
-
-    let urlDisplay;
-    try {
-      const url = new URL(request.url);
-      urlDisplay = url.pathname + url.search;
-    } catch {
-      urlDisplay = request.url;
-    }
-
-    const time = new Date(request.time).toLocaleTimeString();
-
-    let sourceIndicator = "";
-    if (request.source === "modified") {
-      const title = request.originalDeleted
-        ? "Modified request (original deleted)"
-        : "Modified request";
-      sourceIndicator = `<span class="source-indicator modified-indicator" title="${escapeHtml(title)}">M</span>`;
-    } else if (requestsWithModifiedVersions.has(request.id)) {
-      sourceIndicator = `<span class="source-indicator original-with-mods-indicator" title="Has modified versions">+</span>`;
-    }
-
-    requestElement.innerHTML = `
-      <div class="request-url">${escapeHtml(urlDisplay)}</div>
-      <div class="request-meta">
-        ${sourceIndicator}
-        <span class="method" data-method="${escapeHtml(request.method)}">${escapeHtml(request.method)}</span>
-        <span class="time">${escapeHtml(time)}</span>
-        <span class="status ${getStatusClass(request.statusCode)}">${
-      request.statusCode || "-"
-    }</span>
-      </div>
-    `;
-
-    requestElement.addEventListener("click", () => {
-      selectRequest(request.id);
-    });
-
-    requestsContainer.appendChild(requestElement);
-
-    if (groupRelatedRequests && requestsWithModifiedVersions.has(request.id)) {
-      const modifiedVersions = sortedRequests.filter(
-        (req) => req.parentId === request.id && req.source === "modified"
+    // Grouped children
+    if (groupRelatedRequests && hasModifiedVersions.has(request.id)) {
+      const children = sortedRequests.filter(
+        (r) => r.parentId === request.id && r.source === "modified"
       );
-
-      if (modifiedVersions.length > 0) {
-        try {
-          const childContainer = document.createElement("div");
-          childContainer.classList.add("child-requests-container");
-
-          for (const childRequest of modifiedVersions) {
-            const childElement = document.createElement("div");
-            childElement.classList.add(
-              "request-item",
-              "child-request-item",
-              "modified-request"
-            );
-            childElement.dataset.id = childRequest.id;
-
-            if (selectedRequestId === childRequest.id) {
-              childElement.classList.add("selected");
-            }
-
-            let childUrlDisplay;
-            try {
-              const url = new URL(childRequest.url);
-              childUrlDisplay = url.pathname + url.search;
-            } catch {
-              childUrlDisplay = childRequest.url;
-            }
-
-            const childTime = new Date(
-              childRequest.time || Date.now()
-            ).toLocaleTimeString();
-
-            childElement.innerHTML = `
-              <div class="request-url">${escapeHtml(childUrlDisplay)}</div>
-              <div class="request-meta">
-                <span class="source-indicator modified-indicator" title="Modified request">M</span>
-                <span class="method" data-method="${escapeHtml(childRequest.method)}">${escapeHtml(childRequest.method)}</span>
-                <span class="time">${escapeHtml(childTime)}</span>
-                <span class="status ${getStatusClass(childRequest.statusCode)}">${
-              childRequest.statusCode || "-"
-            }</span>
-              </div>
-            `;
-
-            childElement.addEventListener("click", (e) => {
-              e.stopPropagation();
-              selectRequest(childRequest.id);
-            });
-
-            childContainer.appendChild(childElement);
-          }
-
-          requestsContainer.appendChild(childContainer);
-        } catch (error) {
-          console.error("Error rendering child requests:", error);
+      if (children.length > 0) {
+        const childContainer = document.createElement("div");
+        childContainer.classList.add("child-requests-container");
+        for (const child of children) {
+          childContainer.appendChild(buildRequestItem(child, hasModifiedVersions));
         }
+        fragment.appendChild(childContainer);
       }
     }
   }
+
+  requestsContainer.innerHTML = "";
+  requestsContainer.appendChild(fragment);
+  updateRequestCount(requests.length, visibleCount);
 }
 
-// Select a request and display its details
+function buildRequestItem(request, hasModifiedVersions) {
+  const el = document.createElement("div");
+  el.classList.add("request-item");
+  el.dataset.id = request.id;
+
+  if (request.source === "modified") el.classList.add("modified-request");
+  else if (hasModifiedVersions.has(request.id)) el.classList.add("has-modified-versions");
+  if (selectedRequestId === request.id) el.classList.add("selected");
+
+  let urlDisplay;
+  try {
+    const u = new URL(request.url);
+    urlDisplay = u.pathname + u.search;
+  } catch {
+    urlDisplay = request.url;
+  }
+
+  const time = new Date(request.time).toLocaleTimeString();
+
+  let badge = "";
+  if (request.source === "modified") {
+    const title = request.originalDeleted
+      ? "Modified request (original deleted)"
+      : "Modified request";
+    badge = `<span class="source-indicator modified-indicator" title="${escapeHtml(title)}">M</span>`;
+  } else if (hasModifiedVersions.has(request.id)) {
+    badge = `<span class="source-indicator original-with-mods-indicator" title="Has modified versions">+</span>`;
+  }
+
+  el.innerHTML = `
+    <div class="request-url">${escapeHtml(urlDisplay)}</div>
+    <div class="request-meta">
+      ${badge}
+      <span class="method" data-method="${escapeHtml(request.method)}">${escapeHtml(request.method)}</span>
+      <span class="time">${escapeHtml(time)}</span>
+      <span class="status ${getStatusClass(request.statusCode)}">${request.statusCode || "-"}</span>
+    </div>
+  `;
+
+  el.addEventListener("click", (e) => {
+    e.stopPropagation();
+    selectRequest(request.id);
+  });
+  return el;
+}
+
+// ─── Select request ─────────────────────────────────────────────────────────
 function selectRequest(requestId) {
+  cancelAllConfirms();
   selectedRequestId = requestId;
 
-  const items = document.querySelectorAll(".request-item");
-  items.forEach((item) => {
+  document.querySelectorAll(".request-item").forEach((item) => {
     item.classList.toggle("selected", item.dataset.id === requestId);
   });
 
-  const request = requests.find((req) => req.id === requestId);
+  const request = requests.find((r) => r.id === requestId);
   if (!request) return;
-
-  const isModified = request.source === "modified";
-  const parentRequest = request.parentId
-    ? requests.find((req) => req.id === request.parentId)
-    : null;
-  const modifiedVersions = requests.filter(
-    (req) => req.parentId === request.id && req.source === "modified"
-  );
 
   reqMethod.textContent = request.method || "-";
   reqUrl.textContent = request.url || "-";
 
+  // Relationship info
   const requestPanel = document.querySelector(".request-panel");
-  const existingRelInfo = requestPanel.querySelector(".relationship-info");
-  if (existingRelInfo) {
-    existingRelInfo.remove();
-  }
+  requestPanel.querySelector(".relationship-info")?.remove();
+
+  const isModified = request.source === "modified";
+  const parentRequest = request.parentId
+    ? requests.find((r) => r.id === request.parentId)
+    : null;
+  const modifiedVersions = requests.filter(
+    (r) => r.parentId === request.id && r.source === "modified"
+  );
 
   try {
     if (isModified) {
       const relInfo = document.createElement("div");
       relInfo.classList.add("relationship-info");
-
       if (parentRequest) {
         relInfo.innerHTML = `
-          <span>Modified from original request:</span>
-          <a class="parent-link" data-id="${escapeHtml(request.parentId)}" title="View original request">View original</a>
+          <span>Modified from:</span>
+          <a class="parent-link" data-id="${escapeHtml(request.parentId)}" title="View original">View original</a>
         `;
       } else if (request.parentId) {
         relInfo.innerHTML = `
-          <span>Modified from original request:</span>
-          <span class="deleted-parent" title="Original request was deleted">Original deleted</span>
+          <span>Modified from:</span>
+          <span class="deleted-parent">Original deleted</span>
         `;
       }
-
-      const tabsElement = requestPanel.querySelector(".tabs");
-      if (tabsElement) {
-        requestPanel.insertBefore(relInfo, tabsElement);
-
-        const parentLink = relInfo.querySelector(".parent-link");
-        if (parentLink) {
-          parentLink.addEventListener("click", (e) => {
-            selectRequest(e.target.dataset.id);
-          });
-        }
+      const tabsEl = requestPanel.querySelector(".tabs");
+      if (tabsEl) {
+        requestPanel.insertBefore(relInfo, tabsEl);
+        relInfo.querySelector(".parent-link")?.addEventListener("click", (e) => {
+          selectRequest(e.target.dataset.id);
+        });
       }
     } else if (modifiedVersions.length > 0) {
       const relInfo = document.createElement("div");
       relInfo.classList.add("relationship-info");
-
       const links = modifiedVersions
-        .map(
-          (mod, index) =>
-            `<a class="child-link" data-id="${escapeHtml(mod.id)}" title="View modified version ${
-              index + 1
-            }">Version ${index + 1}</a>`
-        )
+        .map((mod, i) => `<a class="child-link" data-id="${escapeHtml(mod.id)}">Version ${i + 1}</a>`)
         .join(", ");
-
-      relInfo.innerHTML = `
-        <span>Has ${modifiedVersions.length} modified version${
-        modifiedVersions.length > 1 ? "s" : ""
-      }:</span>
-        ${links}
-      `;
-
-      const tabsElement = requestPanel.querySelector(".tabs");
-      if (tabsElement) {
-        requestPanel.insertBefore(relInfo, tabsElement);
-
+      relInfo.innerHTML = `<span>${modifiedVersions.length} modified version${modifiedVersions.length > 1 ? "s" : ""}:</span> ${links}`;
+      const tabsEl = requestPanel.querySelector(".tabs");
+      if (tabsEl) {
+        requestPanel.insertBefore(relInfo, tabsEl);
         relInfo.querySelectorAll(".child-link").forEach((link) => {
-          link.addEventListener("click", (e) => {
-            selectRequest(e.target.dataset.id);
-          });
+          link.addEventListener("click", (e) => selectRequest(e.target.dataset.id));
         });
       }
     }
-  } catch (error) {
-    console.error("Error displaying relationship info:", error);
+  } catch (err) {
+    console.error("Error displaying relationship info:", err);
   }
 
+  // Store raw content for toggle
   originalContent.reqHeaders = request.requestHeaders || {};
   originalContent.reqBody = formatRequestBody(request.requestBody);
   originalContent.respHeaders = request.responseHeaders || {};
-  originalContent.respBody = request.responseBody || "Response body not available";
+  originalContent.respBody = request.responseBody
+    || (["GET", "HEAD"].includes(request.method?.toUpperCase())
+      ? "Response body not available"
+      : "Response body capture is disabled for non-GET requests to prevent side effects");
 
-  if (!reqHeadersPre || !reqBodyPre || !respHeadersPre || !respBodyPre) {
-    console.error("Missing pre elements for display");
-    return;
-  }
-
+  // Base display (overridden by formatting below)
   reqHeadersPre.textContent = JSON.stringify(request.requestHeaders || {}, null, 2);
   reqBodyPre.textContent = formatRequestBody(request.requestBody);
   respHeadersPre.textContent = JSON.stringify(request.responseHeaders || {}, null, 2);
-  respBodyPre.textContent = request.responseBody || "Response body not available";
+  respBodyPre.textContent = originalContent.respBody;
+
+  const statusText = request.statusText
+    ? `${request.statusCode} ${request.statusText}`
+    : request.statusCode || "-";
+  respStatus.textContent = statusText;
+  respStatus.className = `status ${getStatusClass(request.statusCode)}`;
 
   try {
     if (requestFormattingState.req) {
@@ -426,13 +426,6 @@ function selectRequest(requestId) {
       showRawContent("reqHeaders", originalContent.reqHeaders);
       showRawContent("reqBody", originalContent.reqBody);
     }
-
-    const statusText = request.statusText
-      ? `${request.statusCode} ${request.statusText}`
-      : request.statusCode || "-";
-    respStatus.textContent = statusText;
-    respStatus.className = `status ${getStatusClass(request.statusCode)}`;
-
     if (requestFormattingState.resp) {
       prettifyContent("respHeaders", originalContent.respHeaders);
       prettifyContent("respBody", originalContent.respBody);
@@ -440,171 +433,95 @@ function selectRequest(requestId) {
       showRawContent("respHeaders", originalContent.respHeaders);
       showRawContent("respBody", originalContent.respBody);
     }
-  } catch (error) {
-    console.error("Error formatting request/response:", error);
+  } catch (err) {
+    console.error("Error formatting content:", err);
   }
 }
 
-// Filter functionality
+// ─── Filter ─────────────────────────────────────────────────────────────────
 filterInput.addEventListener("input", renderRequestsList);
 
-// Clear functionality
+// ─── Clear ──────────────────────────────────────────────────────────────────
 clearButton.addEventListener("click", () => {
-  if (confirm("Clear all captured requests?")) {
-    if (port) {
-      port.postMessage({ type: "CLEAR" });
-      requests = [];
-      renderRequestsList();
-
-      reqMethod.textContent = "-";
-      reqUrl.textContent = "-";
-      reqHeadersPre.textContent = "";
-      reqBodyPre.textContent = "";
-      respStatus.textContent = "-";
-      respHeadersPre.textContent = "";
-      respBodyPre.textContent = "";
-
-      selectedRequestId = null;
-    }
-  }
-});
-
-// Copy as cURL functionality
-copyCurlButton.addEventListener("click", () => {
-  const request = requests.find((req) => req.id === selectedRequestId);
-  if (!request) {
-    alert("No request selected");
-    return;
-  }
-
-  const method = request.method || "GET";
-  const url = request.url;
-  const headers = request.requestHeaders || {};
-  const body = formatRequestBody(request.requestBody);
-
-  let curl = `curl -X ${method} "${url}"`;
-
-  for (const [key, value] of Object.entries(headers)) {
-    const escapedValue = value.replace(/"/g, '\\"');
-    curl += ` \\\n  -H "${key}: ${escapedValue}"`;
-  }
-
-  if (body && !["GET", "HEAD"].includes(method.toUpperCase())) {
-    const escapedBody = body.replace(/"/g, '\\"');
-    curl += ` \\\n  -d "${escapedBody}"`;
-  }
-
-  navigator.clipboard.writeText(curl).then(() => {
-    const original = copyCurlButton.textContent;
-    copyCurlButton.textContent = "Copied!";
-    setTimeout(() => {
-      copyCurlButton.textContent = original;
-    }, 1500);
-  }).catch((err) => {
-    console.error("Failed to copy cURL command", err);
-    alert("Failed to copy cURL command. Please try again.");
+  requireConfirm(clearButton, () => {
+    if (port) port.postMessage({ type: "CLEAR" });
+    requests = [];
+    selectedRequestId = null;
+    clearDetailsPanel();
+    renderRequestsList();
   });
 });
 
-// Modify & Resend functionality
-modifyResendButton.addEventListener("click", () => {
-  const request = requests.find((req) => req.id === selectedRequestId);
-  if (!request) {
-    alert("No request selected");
-    return;
+// ─── Copy as cURL ────────────────────────────────────────────────────────────
+copyCurlButton.addEventListener("click", () => {
+  const request = requests.find((r) => r.id === selectedRequestId);
+  if (!request) { showToast("No request selected", "error"); return; }
+
+  const method = request.method || "GET";
+  const headers = request.requestHeaders || {};
+  const body = formatRequestBody(request.requestBody);
+
+  let curl = `curl -X ${method} "${request.url}"`;
+  for (const [key, value] of Object.entries(headers)) {
+    curl += ` \\\n  -H "${key}: ${value.replace(/"/g, '\\"')}"`;
   }
+  if (body && !["GET", "HEAD"].includes(method.toUpperCase())) {
+    curl += ` \\\n  -d "${body.replace(/"/g, '\\"')}"`;
+  }
+
+  navigator.clipboard.writeText(curl).then(() => {
+    const orig = copyCurlButton.textContent;
+    copyCurlButton.textContent = "Copied!";
+    setTimeout(() => { copyCurlButton.textContent = orig; }, 1500);
+  }).catch(() => showToast("Failed to copy to clipboard", "error"));
+});
+
+// ─── Modify & Resend ────────────────────────────────────────────────────────
+modifyResendButton.addEventListener("click", () => {
+  const request = requests.find((r) => r.id === selectedRequestId);
+  if (!request) { showToast("No request selected", "error"); return; }
 
   modalMethod.value = request.method || "GET";
   modalUrl.value = request.url || "";
   modalHeaders.value = JSON.stringify(request.requestHeaders || {}, null, 2);
   modalBody.value = formatRequestBody(request.requestBody);
-
   modifyModal.style.display = "block";
 });
 
-// Delete Request functionality
+// ─── Delete request ──────────────────────────────────────────────────────────
 deleteRequestButton.addEventListener("click", () => {
-  const request = requests.find((req) => req.id === selectedRequestId);
-  if (!request) {
-    alert("No request selected");
-    return;
-  }
-  if (
-    confirm(
-      `Are you sure you want to delete this ${request.method} request to ${request.url}?`
-    )
-  ) {
-    const requestsToDelete = new Set([request.id]);
+  const request = requests.find((r) => r.id === selectedRequestId);
+  if (!request) { showToast("No request selected", "error"); return; }
 
-    const modifiedVersions = requests.filter(
-      (req) => req.parentId === request.id
-    );
+  requireConfirm(deleteRequestButton, () => {
+    const toDelete = new Set([request.id]);
+    const children = requests.filter((r) => r.parentId === request.id);
+    children.forEach((c) => toDelete.add(c.id));
 
-    if (modifiedVersions.length > 0 && request.source === "page") {
-      const deleteChildren = confirm(
-        `This request has ${modifiedVersions.length} modified version(s). Delete those as well?`
-      );
+    requests = requests.filter((r) => !toDelete.has(r.id));
 
-      if (deleteChildren) {
-        modifiedVersions.forEach((modReq) => {
-          requestsToDelete.add(modReq.id);
-        });
-      } else {
-        modifiedVersions.forEach((modReq) => {
-          modReq.originalDeleted = true;
-        });
-      }
+    if (port) port.postMessage({ type: "DELETE", ids: [...toDelete] });
+
+    if (children.length > 0) {
+      showToast(`Deleted request and ${children.length} modified version${children.length > 1 ? "s" : ""}`);
     }
 
-    if (request.source === "modified" && request.parentId) {
-      // Nothing extra needed — rendering detects remaining modifications automatically
-    }
-
-    requests = requests.filter((req) => !requestsToDelete.has(req.id));
-
-    // Persist deletions to background storage
-    if (port) {
-      port.postMessage({ type: "DELETE", ids: [...requestsToDelete] });
-    }
-
-    if (selectedRequestId === request.id) {
+    if (toDelete.has(selectedRequestId)) {
       selectedRequestId = null;
-
-      reqMethod.textContent = "-";
-      reqUrl.textContent = "-";
-      reqHeadersPre.textContent = "";
-      reqBodyPre.textContent = "";
-      respStatus.textContent = "-";
-      respHeadersPre.textContent = "";
-      respBodyPre.textContent = "";
-
-      const requestPanel = document.querySelector(".request-panel");
-      const existingRelInfo = requestPanel?.querySelector(".relationship-info");
-      if (existingRelInfo) {
-        existingRelInfo.remove();
-      }
+      clearDetailsPanel();
     }
-
     renderRequestsList();
-  }
+  });
 });
 
-// Close modal
-closeModalBtn.addEventListener("click", () => {
-  modifyModal.style.display = "none";
+// ─── Modal close ─────────────────────────────────────────────────────────────
+closeModalBtn.addEventListener("click", () => { modifyModal.style.display = "none"; });
+modalCancel.addEventListener("click", () => { modifyModal.style.display = "none"; });
+window.addEventListener("click", (e) => {
+  if (e.target === modifyModal) modifyModal.style.display = "none";
 });
 
-modalCancel.addEventListener("click", () => {
-  modifyModal.style.display = "none";
-});
-
-window.addEventListener("click", (event) => {
-  if (event.target === modifyModal) {
-    modifyModal.style.display = "none";
-  }
-});
-
-// Send modified request
+// ─── Send modified request ───────────────────────────────────────────────────
 modalSend.addEventListener("click", async () => {
   const method = modalMethod.value;
   const url = modalUrl.value;
@@ -612,22 +529,14 @@ modalSend.addEventListener("click", async () => {
   let headers = {};
   try {
     headers = JSON.parse(modalHeaders.value);
-  } catch (e) {
-    alert("Invalid JSON in headers field");
+  } catch {
+    showToast("Invalid JSON in headers field", "error");
     return;
   }
 
   const body = modalBody.value;
-
-  const options = {
-    method,
-    headers,
-    credentials: "include",
-  };
-
-  if (body && !["GET", "HEAD"].includes(method.toUpperCase())) {
-    options.body = body;
-  }
+  const options = { method, headers, credentials: "include" };
+  if (body && !["GET", "HEAD"].includes(method.toUpperCase())) options.body = body;
 
   try {
     const response = await fetch(url, options);
@@ -647,7 +556,8 @@ modalSend.addEventListener("click", async () => {
       id: newRequestId,
       url,
       method,
-      statusCode: response.status,
+      status: response.status,       // used by transformRequest on reload
+      statusCode: response.status,   // used directly by panel
       statusText: response.statusText,
       requestHeaders: headers,
       requestBody: body,
@@ -660,116 +570,72 @@ modalSend.addEventListener("click", async () => {
     };
 
     requests.unshift(newRequest);
-
-    // Persist to background storage
-    if (port) {
-      port.postMessage({ type: "STORE", data: { ...newRequest } });
-    }
+    if (port) port.postMessage({ type: "STORE", data: { ...newRequest } });
 
     renderRequestsList();
     selectRequest(newRequest.id);
-
     modifyModal.style.display = "none";
-  } catch (error) {
-    alert(`Error sending request: ${error.message}`);
+  } catch (err) {
+    showToast(`Request failed: ${err.message}`, "error");
   }
 });
 
-// Theme and formatting state
-let isLightMode = false;
-let groupRelatedRequests = false;
-let requestFormattingState = {
-  req: true,
-  resp: true,
-};
+// ─── Pause / Resume ──────────────────────────────────────────────────────────
+function updatePauseButton() {
+  if (!pauseButton) return;
+  if (captureEnabled) {
+    pauseButton.textContent = "Pause";
+    pauseButton.classList.remove("paused");
+    pauseButton.title = "Pause request capture";
+  } else {
+    pauseButton.textContent = "Resume";
+    pauseButton.classList.add("paused");
+    pauseButton.title = "Resume request capture";
+  }
+}
 
-let requestFormatType = {
-  req: "json",
-  resp: "json",
-};
+pauseButton?.addEventListener("click", () => {
+  captureEnabled = !captureEnabled;
+  updatePauseButton();
+  if (port) port.postMessage({ type: captureEnabled ? "RESUME" : "PAUSE" });
+  showToast(captureEnabled ? "Capture resumed" : "Capture paused");
+});
 
-let originalContent = {
-  reqHeaders: "",
-  reqBody: "",
-  respHeaders: "",
-  respBody: "",
-};
-
-// Theme toggle
-const themeToggle = document.getElementById("theme-toggle");
+// ─── Theme toggle ─────────────────────────────────────────────────────────────
 themeToggle.addEventListener("click", () => {
   isLightMode = !isLightMode;
   document.body.classList.toggle("light-mode", isLightMode);
   themeToggle.textContent = isLightMode ? "Dark Mode" : "Light Mode";
-  localStorage.setItem("lotus-theme", isLightMode ? "light" : "dark");
+  chrome.storage.local.set({ "lotus-theme": isLightMode ? "light" : "dark" });
 });
 
-if (localStorage.getItem("lotus-theme") === "light") {
-  isLightMode = true;
-  document.body.classList.add("light-mode");
-  themeToggle.textContent = "Dark Mode";
-} else {
-  themeToggle.textContent = "Light Mode";
-}
-
-// Group Related toggle
+// ─── Group related toggle ─────────────────────────────────────────────────────
 if (groupRelatedToggle) {
   groupRelatedToggle.addEventListener("click", () => {
     groupRelatedRequests = !groupRelatedRequests;
-
-    if (groupRelatedRequests) {
-      groupRelatedToggle.classList.add("active");
-      groupRelatedToggle.textContent = "Ungroup Related";
-    } else {
-      groupRelatedToggle.classList.remove("active");
-      groupRelatedToggle.textContent = "Group Related";
-    }
-
-    localStorage.setItem(
-      "lotus-group-related",
-      groupRelatedRequests ? "true" : "false"
-    );
+    groupRelatedToggle.classList.toggle("active", groupRelatedRequests);
+    groupRelatedToggle.textContent = groupRelatedRequests ? "Ungroup Related" : "Group Related";
+    chrome.storage.local.set({ "lotus-group-related": groupRelatedRequests ? "true" : "false" });
     renderRequestsList();
   });
-
-  if (localStorage.getItem("lotus-group-related") === "true") {
-    groupRelatedRequests = true;
-    groupRelatedToggle.classList.add("active");
-    groupRelatedToggle.textContent = "Ungroup Related";
-  }
 }
 
-// Format toggle
-const formatToggles = document.querySelectorAll(".format-toggle");
-formatToggles.forEach((toggle) => {
+// ─── Format toggles (pretty / raw) ───────────────────────────────────────────
+document.querySelectorAll(".format-toggle").forEach((toggle) => {
   toggle.addEventListener("click", () => {
     const target = toggle.dataset.target;
     requestFormattingState[target] = !requestFormattingState[target];
-
     toggle.textContent = requestFormattingState[target] ? "Pretty" : "Raw";
     toggle.classList.toggle("active", requestFormattingState[target]);
-
-    if (selectedRequestId) {
-      toggleFormatting(target);
-    }
+    if (selectedRequestId) toggleFormatting(target);
   });
 });
 
-// Format type dropdown — click-toggled
+// ─── Format type dropdown (click-toggled) ────────────────────────────────────
 const formatTypeButtons = document.querySelectorAll(".format-type-button");
 const formatOptions = document.querySelectorAll(".format-option");
 
-const savedReqFormat = localStorage.getItem("lotus-req-format-type");
-const savedRespFormat = localStorage.getItem("lotus-resp-format-type");
-
-if (savedReqFormat) requestFormatType.req = savedReqFormat;
-if (savedRespFormat) requestFormatType.resp = savedRespFormat;
-
-// Set button labels and wire up open/close toggle
 formatTypeButtons.forEach((button) => {
-  const target = button.dataset.target;
-  button.textContent = `Format: ${requestFormatType[target].toUpperCase()}`;
-
   button.addEventListener("click", (e) => {
     e.stopPropagation();
     const dropdown = button.closest(".format-type-dropdown");
@@ -779,14 +645,6 @@ formatTypeButtons.forEach((button) => {
   });
 });
 
-// Mark the initially-active option for each group
-formatOptions.forEach((option) => {
-  if (option.dataset.format === requestFormatType[option.dataset.target]) {
-    option.classList.add("active");
-  }
-});
-
-// Close all dropdowns when clicking elsewhere
 document.addEventListener("click", () => {
   document.querySelectorAll(".format-type-dropdown.open").forEach((d) => d.classList.remove("open"));
 });
@@ -798,26 +656,54 @@ formatOptions.forEach((option) => {
     const format = option.dataset.format;
 
     requestFormatType[target] = format;
-
-    // Update button label
-    const button = document.querySelector(`.format-type-button[data-target="${target}"]`);
-    button.textContent = `Format: ${format.toUpperCase()}`;
-
-    // Update active state within this group
+    document.querySelector(`.format-type-button[data-target="${target}"]`).textContent = `Format: ${format.toUpperCase()}`;
     document.querySelectorAll(`.format-option[data-target="${target}"]`).forEach((o) => o.classList.remove("active"));
     option.classList.add("active");
-
-    // Close the dropdown
     option.closest(".format-type-dropdown").classList.remove("open");
 
-    localStorage.setItem(`lotus-${target}-format-type`, format);
-
-    if (requestFormattingState[target] && selectedRequestId) {
-      toggleFormatting(target);
-    }
+    chrome.storage.local.set({ [`lotus-${target}-format-type`]: format });
+    if (requestFormattingState[target] && selectedRequestId) toggleFormatting(target);
   });
 });
 
+// ─── Load preferences from chrome.storage ────────────────────────────────────
+chrome.storage.local.get(
+  ["lotus-theme", "lotus-group-related", "lotus-req-format-type", "lotus-resp-format-type"],
+  (prefs) => {
+    // Theme
+    if (prefs["lotus-theme"] === "light") {
+      isLightMode = true;
+      document.body.classList.add("light-mode");
+      themeToggle.textContent = "Dark Mode";
+    } else {
+      themeToggle.textContent = "Light Mode";
+    }
+
+    // Grouping
+    if (prefs["lotus-group-related"] === "true" && groupRelatedToggle) {
+      groupRelatedRequests = true;
+      groupRelatedToggle.classList.add("active");
+      groupRelatedToggle.textContent = "Ungroup Related";
+    }
+
+    // Format types
+    if (prefs["lotus-req-format-type"])  requestFormatType.req  = prefs["lotus-req-format-type"];
+    if (prefs["lotus-resp-format-type"]) requestFormatType.resp = prefs["lotus-resp-format-type"];
+
+    // Initialise format type button labels and active options
+    formatTypeButtons.forEach((button) => {
+      button.textContent = `Format: ${requestFormatType[button.dataset.target].toUpperCase()}`;
+    });
+    formatOptions.forEach((option) => {
+      option.classList.toggle(
+        "active",
+        option.dataset.format === requestFormatType[option.dataset.target]
+      );
+    });
+  }
+);
+
+// ─── Formatting functions ─────────────────────────────────────────────────────
 function toggleFormatting(target) {
   if (target === "req") {
     if (requestFormattingState.req) {
@@ -855,49 +741,32 @@ function prettifyContent(targetId, content) {
         preElement.textContent = "";
         return;
       }
-
       preElement.className = "";
 
       switch (formatType) {
         case "json":
           try {
-            const obj =
-              typeof content === "object" ? content : JSON.parse(content);
+            const obj = typeof content === "object" ? content : JSON.parse(content);
             preElement.textContent = JSON.stringify(obj, null, 2);
             preElement.classList.add("language-json");
-          } catch (e) {
-            preElement.textContent = content;
+          } catch {
+            preElement.textContent = typeof content === "string" ? content : JSON.stringify(content);
           }
           break;
 
         case "xml":
-          try {
-            if (typeof content === "string" && content.includes("<")) {
-              preElement.textContent = formatXML(content);
-              preElement.classList.add("language-xml");
-            } else {
-              preElement.textContent = content;
-            }
-          } catch (e) {
-            preElement.textContent = content;
-          }
-          break;
-
         case "html":
           try {
-            if (typeof content === "string" && content.includes("<")) {
-              preElement.textContent = formatXML(content);
-              preElement.classList.add("language-html");
-            } else {
-              preElement.textContent = content;
-            }
-          } catch (e) {
+            preElement.textContent = typeof content === "string" && content.includes("<")
+              ? formatXML(content)
+              : content;
+            preElement.classList.add(`language-${formatType}`);
+          } catch {
             preElement.textContent = content;
           }
           break;
 
         case "js":
-          // Display as plain text — evaluating arbitrary response content is unsafe
           preElement.textContent =
             typeof content === "string" ? content : JSON.stringify(content, null, 2);
           preElement.classList.add("language-javascript");
@@ -905,13 +774,11 @@ function prettifyContent(targetId, content) {
 
         case "css":
           try {
-            if (typeof content === "string" && content.includes("{")) {
-              preElement.textContent = formatCSS(content);
-              preElement.classList.add("language-css");
-            } else {
-              preElement.textContent = content;
-            }
-          } catch (e) {
+            preElement.textContent = typeof content === "string" && content.includes("{")
+              ? formatCSS(content)
+              : content;
+            preElement.classList.add("language-css");
+          } catch {
             preElement.textContent = content;
           }
           break;
@@ -921,30 +788,38 @@ function prettifyContent(targetId, content) {
             typeof content === "string" ? content : JSON.stringify(content);
       }
     }
-  } catch (e) {
+  } catch {
     preElement.textContent =
       typeof content === "string" ? content : JSON.stringify(content, null, 2);
   }
+}
+
+function showRawContent(targetId, content) {
+  const elementId = targetId.replace(/([A-Z])/g, "-$1").toLowerCase();
+  const preElement = document.querySelector(`#${elementId} pre`);
+  if (!preElement) return;
+
+  if (targetId.includes("Headers") && typeof content === "object") {
+    preElement.textContent = Object.entries(content)
+      .map(([k, v]) => `${k}: ${v}`)
+      .join("\n");
+  } else {
+    preElement.textContent =
+      typeof content === "string" ? content : JSON.stringify(content);
+  }
+  preElement.className = "";
 }
 
 function formatXML(xml) {
   let formatted = "";
   let indent = "";
   const tab = "  ";
-
   xml = xml.trim().replace(/(>)(<)(\/*)/g, "$1\n$2$3");
   xml.split(/\n/).forEach((line) => {
-    if (line.match(/^<\/\w/)) {
-      indent = indent.substring(tab.length);
-    }
-
+    if (line.match(/^<\/\w/)) indent = indent.substring(tab.length);
     formatted += indent + line + "\n";
-
-    if (line.match(/^<\w[^>]*[^/]>.*$/)) {
-      indent += tab;
-    }
+    if (line.match(/^<\w[^>]*[^/]>.*$/)) indent += tab;
   });
-
   return formatted.trim();
 }
 
@@ -955,32 +830,5 @@ function formatCSS(css) {
     .replace(/;/g, ";\n  ")
     .replace(/\n {2}}/g, "\n}")
     .replace(/,[\r\n\s]+/g, ", ");
-
-  formatted = formatted.replace(/\n\s*\n/g, "\n");
-
-  return formatted;
-}
-
-function showRawContent(targetId, content) {
-  const elementId = targetId.replace(/([A-Z])/g, "-$1").toLowerCase();
-  const preElement = document.querySelector(`#${elementId} pre`);
-  if (!preElement) return;
-
-  if (targetId.includes("Headers")) {
-    if (typeof content === "object") {
-      const headerText = Object.entries(content)
-        .map(([key, value]) => `${key}: ${value}`)
-        .join("\n");
-      preElement.textContent = headerText;
-    } else {
-      preElement.textContent = content;
-    }
-  } else {
-    preElement.textContent =
-      typeof content === "string" ? content : JSON.stringify(content);
-  }
-
-  if (preElement.className) {
-    preElement.className = "";
-  }
+  return formatted.replace(/\n\s*\n/g, "\n");
 }
