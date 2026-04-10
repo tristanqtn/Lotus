@@ -13,6 +13,11 @@
         </div>
         <div class="controls">
         <input type="text" id="filter" placeholder="Filter requests..." />
+        <button
+          id="filter-regex"
+          class="icon-button"
+          title="Toggle regex mode for filter"
+        >.*</button>
         <button id="clear">Clear All</button>
         <button
           id="group-related"
@@ -29,11 +34,11 @@
           Pause
         </button>
         <button
-          id="theme-toggle"
+          id="full-capture"
           class="icon-button"
-          title="Toggle Light/Dark Mode"
+          title="Enable full response body capture for all methods (attaches Chrome debugger to this tab)"
         >
-          Light Mode
+          Full Capture
         </button>
       </div>
     </header>
@@ -42,6 +47,12 @@
       <div class="sidebar">
         <div class="sidebar-header">
           <span id="request-count" class="request-count">0 requests</span>
+          <div class="status-filters">
+            <button class="status-filter-btn" data-status="2" title="Show 2xx responses">2xx</button>
+            <button class="status-filter-btn" data-status="3" title="Show 3xx responses">3xx</button>
+            <button class="status-filter-btn" data-status="4" title="Show 4xx responses">4xx</button>
+            <button class="status-filter-btn" data-status="5" title="Show 5xx responses">5xx</button>
+          </div>
         </div>
         <div id="requests-container">
           <div id="requests"></div>
@@ -181,9 +192,12 @@
               <pre></pre>
             </div>
           </div>
-        </div>        <div class="actions">
+        </div>
+
+        <div class="actions">
           <button id="copy-curl">Copy as cURL</button>
-          <button id="modify-resend">Modify & Resend</button>
+          <button id="modify-resend">Modify &amp; Resend</button>
+          <button id="diff-request" disabled>Diff</button>
           <button id="delete-request">Delete Request</button>
         </div>
       </div>
@@ -191,52 +205,113 @@
 
     <!-- Modal for modifying and resending requests -->
     <div id="modify-modal" class="modal">
-      <div class="modal-content">
+      <div class="modal-content modal-wide">
         <div class="modal-header">
-          <h2>Modify Request</h2>
-          <span class="close-modal">&times;</span>
+          <h2>Modify &amp; Resend</h2>
+          <span class="close-modal" id="modify-modal-close">&times;</span>
         </div>
         <div class="modal-body">
-          <div class="form-group">
-            <label for="modal-method">Method</label>
-            <select id="modal-method">
-              <option value="GET">GET</option>
-              <option value="POST">POST</option>
-              <option value="PUT">PUT</option>
-              <option value="DELETE">DELETE</option>
-              <option value="PATCH">PATCH</option>
-              <option value="HEAD">HEAD</option>
-              <option value="OPTIONS">OPTIONS</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label for="modal-url">URL</label>
-            <input
-              type="text"
-              id="modal-url"
-              placeholder="https://example.com/api/resource"
-            />
-          </div>
-          <div class="form-group">
-            <label for="modal-headers">Headers (JSON)</label>
-            <textarea
-              id="modal-headers"
-              rows="5"
-              placeholder='{ "Content-Type": "application/json" }'
-            ></textarea>
-          </div>
-          <div class="form-group">
-            <label for="modal-body">Body</label>
-            <textarea
-              id="modal-body"
-              rows="8"
-              placeholder='{ "key": "value" }'
-            ></textarea>
+          <div class="modal-compare">
+
+            <!-- Left: original (read-only) -->
+            <div class="modal-compare-pane">
+              <div class="modal-compare-label">Original</div>
+              <div class="form-group">
+                <label>Method</label>
+                <div id="orig-method" class="compare-field"></div>
+              </div>
+              <div class="form-group">
+                <label>URL</label>
+                <div id="orig-url" class="compare-field compare-field-url"></div>
+              </div>
+              <div class="form-group">
+                <label>Headers</label>
+                <textarea id="orig-headers" class="compare-field" rows="5" readonly></textarea>
+              </div>
+              <div class="form-group">
+                <label>Body</label>
+                <textarea id="orig-body" class="compare-field" rows="8" readonly></textarea>
+              </div>
+            </div>
+
+            <!-- Right: editable -->
+            <div class="modal-compare-pane modal-compare-editable">
+              <div class="modal-compare-label">Modified</div>
+              <div class="form-group">
+                <label for="modal-method">Method</label>
+                <select id="modal-method">
+                  <option value="GET">GET</option>
+                  <option value="POST">POST</option>
+                  <option value="PUT">PUT</option>
+                  <option value="DELETE">DELETE</option>
+                  <option value="PATCH">PATCH</option>
+                  <option value="HEAD">HEAD</option>
+                  <option value="OPTIONS">OPTIONS</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="modal-url">URL</label>
+                <input
+                  type="text"
+                  id="modal-url"
+                  placeholder="https://example.com/api/resource"
+                />
+              </div>
+              <div class="form-group">
+                <label for="modal-headers">Headers (JSON)</label>
+                <textarea
+                  id="modal-headers"
+                  rows="5"
+                  placeholder='{ "Content-Type": "application/json" }'
+                ></textarea>
+              </div>
+              <div class="form-group">
+                <label for="modal-body">Body</label>
+                <textarea
+                  id="modal-body"
+                  rows="8"
+                  placeholder='{ "key": "value" }'
+                ></textarea>
+              </div>
+            </div>
+
+            <!-- Response (shown after send) -->
+            <div class="modal-compare-pane" id="modal-response-pane" hidden>
+              <div class="modal-compare-label">
+                Response
+                <span id="modal-resp-badge" class="modal-resp-badge"></span>
+              </div>
+              <div class="form-group">
+                <label>Status</label>
+                <div id="modal-resp-status" class="compare-field"></div>
+              </div>
+              <div class="form-group">
+                <label>Headers</label>
+                <textarea id="modal-resp-headers" class="compare-field" rows="5" readonly></textarea>
+              </div>
+              <div class="form-group">
+                <label>Body</label>
+                <textarea id="modal-resp-body" class="compare-field" rows="8" readonly></textarea>
+              </div>
+            </div>
+
           </div>
         </div>
         <div class="modal-footer">
           <button id="modal-cancel" class="btn-secondary">Cancel</button>
           <button id="modal-send" class="btn-primary">Send Request</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal for diffing original vs modified request -->
+    <div id="diff-modal" class="modal">
+      <div class="modal-content modal-wide">
+        <div class="modal-header">
+          <h2>Diff: Original vs Modified</h2>
+          <span class="close-modal" id="diff-modal-close">&times;</span>
+        </div>
+        <div class="modal-body" id="diff-modal-body">
         </div>
       </div>
     </div>

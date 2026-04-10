@@ -1,244 +1,100 @@
-# Lotus 🪷
+# Lotus
 
-Lotus is a powerful browser extension for capturing, examining, modifying, and replaying web requests directly in your browser's DevTools. 
+A Chrome DevTools extension for capturing, inspecting, modifying, and replaying HTTP requests — without leaving the browser.
 
-This tool has been created for lazy security guys like me that needs to quickly inspect and manipulate web requests without leaving the browser nor spining up Burp Suite or Postman. 
-
-> [!NOTE] 
-> This tool has been greatly inspired by other tools like Postman and Burp Suite and it does not aim to replace them. It is meant to be a lightweight alternative for quick tasks directly in the browser.
-
-> [!NOTE]
-> I had the idea of creating this tool while working on some CTF challenge where I needed to quickly manipulate and resend API requests. I wanted something lightweight that would integrate directly into my browser workflow without the overhead of larger tools. Thus, Lotus was born to fill that niche for quick and easy API request manipulation.
+Built for developers and security folks who need quick request manipulation without spinning up Burp Suite or Postman.
 
 ![Lotus Screenshot](./assets/screenshot_1.png)
 
 ## Features
 
-- 🪷 **API Request Monitoring**: Automatically captures all API requests made by the current tab.
-- 🔍 **Request Inspection**: View complete request and response details including headers, parameters, and status codes.
-- 📋 **Copy as cURL**: Export any captured request as a cURL command for use in your terminal or API documentation.
-- 🔄 **Real-time Updates**: Requests are displayed in real-time as they occur.
-- 🔎 **Filtering**: Quickly find specific requests with the built-in filter.
-- 🔁 **Modify & Resend**: Edit captured requests and resend them to test API endpoints.
-- 🌓 **Light/Dark Mode**: Switch between light and dark themes based on your preference.
-- 🔄 **Raw/Pretty Toggle**: View response data in raw format or beautifully formatted JSON.
-- 🔗 **Request Relationships**: Track parent-child relationships between original and modified requests.
-- 👥 **Request Grouping**: Toggle between flat view and hierarchical view for related requests.
-
-## New Features
-
-### Request Relationship Tracking
-
-Lotus now provides a powerful way to track relationships between original requests and their modified versions:
-
-- 🔗 **Visual Indicators**: Modified requests and their originals are clearly marked with color-coded borders and icons
-- 📋 **Parent-Child Relationships**: Navigate easily between original requests and their modified versions
-- 📊 **Grouping**: Toggle between flat view and hierarchical view to organize related requests
-- 🔄 **Source Tracking**: Requests are labeled based on their source (page or modified)
-
-### Modify & Resend
-
-Edit any captured request and send it again with modified parameters. This is particularly useful for:
-
-- Testing different API payloads without changing your code
-- Troubleshooting by isolating request issues
-- Exploring API behavior with different inputs
-
-### Theme Support
-
-- **Dark Mode (Default)**: A beautiful Dracula-inspired dark theme that's easy on the eyes for long development sessions
-- **Light Mode**: A clean, professional light theme for high-contrast environments
-- Your theme preference is remembered between sessions
-
-### Formatting Options
-
-Toggle between pretty-formatted and raw data views:
-
-- **Pretty**: JSON data is automatically formatted with proper indentation and syntax highlighting
-- **Raw**: See the exact data as sent or received over the wire, ideal for debugging serialization issues
-
-### Request Relationship Features (v2.0)
-
-The new relationship tracking system helps you keep track of original requests and their modified versions:
-
-- **Visual Indicators**: 
-  - Modified requests are marked with a pink border and an "M" badge
-  - Original requests with modifications have a cyan border and a "+" badge
-  
-- **Relationship Navigation**:
-  - When viewing a modified request, you can quickly navigate to its original request
-  - When viewing an original request with modifications, you can see and navigate to all its modified versions
-  
-- **Request Grouping**:
-  - Toggle between flat view and hierarchical view with the "Group Related" button
-  - In grouped view, modified requests appear indented under their original requests
-  - Visual connecting lines show the relationship between parent and child requests
-
-## Browser Compatibility
-
-Lotus primarily works with Chromium-based browsers:
-
-- ✅ Google Chrome (primary development platform)
-- ✅ Microsoft Edge
-- ✅ Brave
-- ✅ Opera
-- ✅ Vivaldi
-- ❌ Firefox (not compatible due to different extension API)
-- ❌ Safari (not compatible due to different extension API)
+| Feature | Description |
+|---|---|
+| **Auto-Capture** | All HTTP requests from the inspected tab logged in real time |
+| **Full Capture** | Response bodies for all methods (POST/PUT/PATCH/DELETE) via Chrome debugger API |
+| **Filter** | URL/method substring filter with regex toggle + 2xx/3xx/4xx/5xx status buttons |
+| **Modify & Resend** | Edit any request in a side-by-side original/modified modal and replay it |
+| **Diff** | Side-by-side diff of headers and body between an original and its modified version |
+| **Copy as cURL** | One-click export of any request as a `curl` command |
+| **Format Toggle** | Pretty/Raw view with format selector: JSON, XML, HTML, JavaScript, CSS |
+| **Request Grouping** | Hierarchical view linking original requests to their modified versions |
+| **Pause / Resume** | Stop capture without clearing history |
+| **Persistent State** | Requests survive panel reloads via `chrome.storage.local` |
 
 ## Installation
 
-1. Clone this repository or download the source code.
-2. Open a Chromium-based browser and navigate to `chrome://extensions/` (or the equivalent in your browser).
-3. Enable "Developer mode" in the top-right corner.
-4. Click "Load unpacked" and select the Lotus directory.
+1. Clone or download this repository.
+2. Open `chrome://extensions/` and enable **Developer mode**.
+3. Click **Load unpacked** and select the repo root.
+4. Open DevTools (`F12`), find the **Lotus** tab (use the `>>` overflow menu if needed).
+
+Works on Chrome, Edge, Brave, and other Chromium-based browsers. Firefox is not supported (`chrome.*` APIs throughout).
 
 ## Usage
 
-1. Open DevTools (F12 or right-click > Inspect).
-2. Navigate to the "Lotus" panel (you may need to click the "»" overflow menu to find it).
-3. Browse the website as normal - all API requests will be automatically captured.
-4. Click on any request in the sidebar to view its details.
-5. Use the features:
-   - **Copy as cURL**: Copy the request as a cURL command for use in your terminal
-   - **Modify & Resend**: Change request parameters and send a new request
-   - **Theme Toggle**: Switch between dark (Dracula) and light themes
-   - **Format Toggle**: Switch between raw and prettified data views
+1. Open the **Lotus** panel in DevTools.
+2. Browse the page — requests appear automatically in the sidebar.
+3. Click a request to inspect its headers and body.
+4. Use the toolbar buttons:
+   - **Full Capture** — attaches Chrome's debugger to the tab so response bodies are captured for all HTTP methods, not just GET.
+   - **Filter** — type to filter by URL or method; click `.*` to switch to regex; click status badges to show only 2xx/3xx/4xx/5xx.
+   - **Pause** — temporarily stop recording without losing history.
+   - **Group Related** — switch to a hierarchical view that nests modified requests under their originals.
+5. With a request selected, use the action buttons:
+   - **Copy as cURL** — copies a `curl` command to the clipboard.
+   - **Modify & Resend** — opens a two-column modal showing the original and editable values side by side; changed fields are highlighted in orange.
+   - **Diff** — opens a side-by-side diff view (only enabled for modified requests with an available original).
+   - **Delete Request** — removes the request and any of its modified children.
 
-## How It Works
+## Architecture
 
-Lotus utilizes the Chrome DevTools Protocol and Extension APIs to intercept, analyze, and manipulate network requests:
+Two execution contexts communicate via Chrome's port API.
 
-1. **Request Capture**: The background script (`background.js`) uses the `chrome.webRequest` API to monitor all outgoing HTTP requests from the current tab.
+**`background.js`** — service worker that owns all network interception and storage.
+- `chrome.webRequest` pipeline: `onBeforeRequest` → `onBeforeSendHeaders` → `onHeadersReceived` → `onCompleted`
+- `chrome.debugger` pipeline (Full Capture mode): `Network.requestWillBeSent` → `Network.responseReceived` → `Network.loadingFinished` + `getResponseBody`. When a tab has the debugger attached, the webRequest pipeline is skipped for that tab.
+- Stores requests in `chrome.storage.local` keyed by `tabId`, capped at 1 000 requests per tab.
 
-2. **Data Processing**: Captured requests are processed, with headers and body information extracted and formatted for display.
+**`panel.js` + `panel.html` + `panel.css`** — the DevTools panel UI.
+- Receives requests over the port connection and renders them.
+- Sends `DELETE`, `STORE`, `PAUSE`, `RESUME`, `FULL_CAPTURE_ENABLE`, `FULL_CAPTURE_DISABLE` messages back to the background.
+- Preferences (grouping, format type) persisted via `chrome.storage.local`; Full Capture preference via `localStorage`.
 
-3. **DevTools Integration**: The extension adds a custom panel to Chrome DevTools where the UI is rendered.
+**`lib/utils.js`** — shared helpers: `safeParseJSON`, `toHeaderObject`, `formatRequestBody`, `formatTextContent`.
 
-4. **Real-time Communication**: A persistent connection between the DevTools panel and the background script ensures that new requests appear in real-time.
-
-5. **Response Body Capture**: The extension attempts to capture response bodies through a combination of the webRequest API and fetch API when possible.
-
-6. **Storage and State**: Request data is temporarily stored in memory and persisted using `chrome.storage.local` to survive extension restarts.
+```
+background.js       # Request interception, CDP debugger, storage
+devtools.html / .js # Registers the panel in DevTools
+panel.html          # Panel markup
+panel.js            # Panel logic
+panel.css           # Dracula-themed styles
+popup.html          # Extension popup (info only)
+lib/utils.js        # Shared utilities
+manifest.json       # MV3 manifest
+```
 
 ## Development
 
-To modify or enhance Lotus:
-
-1. Edit `background.js` to change how requests are captured and processed.
-2. Edit `panel.js` and `panel.html` to modify the DevTools panel UI.
-3. Edit `panel.css` for styling changes and theme modifications.
-4. Edit `lib/utils.js` for utility functions used across the extension.
-5. Edit `popup.html` to modify the extension popup UI and documentation.
-6. Reload the extension in `chrome://extensions/` after making changes.
-
-### Project Structure
-
+```bash
+npm run lint        # ESLint check
+npm run lint:fix    # ESLint auto-fix
+npm run build       # Package as dist/lotus.zip (Unix/macOS)
+npm run build:win   # Package as dist/lotus.zip (Windows)
+npm run version     # Sync version between manifest.json and package.json
 ```
-background.js        # Background script for request interception
-devtools.html        # DevTools page setup
-devtools.js          # Registers the DevTools panel
-manifest.json        # Extension configuration
-panel.css           # Styles for the DevTools panel
-panel.html          # HTML structure of the DevTools panel
-panel.js            # Main UI logic for the panel
-popup.html          # Extension popup with documentation
-lib/
-  utils.js          # Shared utility functions
+
+After editing any file, reload the extension at `chrome://extensions/`.
+
+## Release
+
+Push to `main` triggers the GitHub Actions workflow: lint → build → create a GitHub Release with `dist/lotus.zip` attached. Version is read from `manifest.json`. To bump:
+
+```bash
+npm run version   # after editing manifest.json
+git commit -am "chore: bump to x.y.z"
+git push origin main
 ```
 
 ## License
 
-This project is open source and available under the [MIT License](LICENSE).
-
-## Troubleshooting
-
-### Lotus Panel Not Visible
-
-If you don't see the Lotus panel in DevTools:
-
-1. Close and reopen DevTools
-2. Check the "»" overflow menu to see if Lotus is hidden there
-3. Try disabling and re-enabling the extension in `chrome://extensions/`
-4. Ensure you have the latest version of your browser
-
-### Request Data Not Appearing
-
-If you're not seeing API requests in Lotus:
-
-1. Confirm the requests are actually being made (check Network tab)
-2. Some requests from other extensions or service workers might not be captured
-3. Try refreshing the page to restart the capturing process
-
-### Other Issues
-
-- For CORS-related issues, remember that Lotus can only access what the browser's Network API provides
-- Large response bodies might be truncated in the display
-- For secure contexts (https), more request data is available than for insecure contexts
-
-## Development
-
-### CI/CD Pipelines
-
-Lotus uses GitHub Actions for automation, providing the following CI/CD pipelines:
-
-#### Automated Testing & Linting
-- Runs on every push and pull request
-- Validates code quality and style
-- Ensures tests pass before merging
-
-#### Automated Releases
-- When code is pushed to the main branch, a new release is created automatically
-- The version number is taken from the `manifest.json` file
-- The extension is packaged into a ZIP file and attached to the GitHub release
-- Release notes are generated automatically from commit messages
-
-#### Security Scanning
-- Weekly security audits for dependencies
-- Runs on every push to main branch
-- Flags potential security issues
-
-#### Dependency Updates
-- Weekly automated checks for outdated dependencies
-- Creates pull requests for updates when needed
-
-### Creating a New Release
-
-To create a new release:
-
-#### Automatic Method
-1. Use the version bump script:
-   ```
-   node scripts/bump-version.js [major|minor|patch]
-   ```
-   This will update the version in both `manifest.json` and `package.json`
-
-2. Commit and push your changes to the main branch:
-   ```
-   git commit -am "Bump version to x.x.x"
-   git push origin main
-   ```
-
-3. GitHub Actions will automatically:
-   - Run tests and linting
-   - Build the extension package
-   - Create a GitHub release with the package attached
-   - Generate release notes from commit messages
-
-#### Manual Method
-1. Update the version in `manifest.json`
-2. Update the version in `package.json`
-3. Push your changes to the main branch
-
-### Contributing
-
-Please see [CONTRIBUTING.md](./CONTRIBUTING.md) for details on how to contribute to this project.
-
-## Credits
-
-- Dracula theme colors inspired by the [Dracula Theme](https://draculatheme.com/)
-- Icons and styling based on modern design practices for developer tools
-
----
-
-If you find Lotus useful, consider starring the repository and contributing to its development!
+MIT

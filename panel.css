@@ -325,8 +325,12 @@ button:active { opacity: 0.8; }
 
 /* ─── Child requests ───────────────────────────────────────────────────────── */
 .child-requests-container {
-  margin-left: 18px;
   border-left: 1px dashed rgba(98, 114, 164, 0.45);
+  margin-left: 18px;
+}
+
+.child-requests-container .request-item {
+  margin-left: calc((var(--nest-depth, 1) - 1) * 14px);
 }
 
 .child-request-item {
@@ -804,3 +808,364 @@ button.confirming {
   color: var(--d-green);
   border-color: rgba(80, 250, 123, 0.3);
 }
+
+/* ─── Modify modal two-column compare layout ───────────────────────────────── */
+.modal-body:has(.modal-compare) {
+  padding: 12px;
+  background: var(--bg);
+}
+
+.modal-compare {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  align-items: start;
+}
+
+/* 3-column layout when a response pane is visible */
+.modal-compare.has-response {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
+.modal-compare-pane {
+  background: var(--surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  border-top: 3px solid rgba(98, 114, 164, 0.6);
+  padding: 14px 14px 6px;
+  min-width: 0;
+}
+
+.modal-compare-editable {
+  border-top-color: var(--d-cyan);
+}
+
+#modal-response-pane {
+  border-top-color: var(--d-purple);
+}
+
+#modal-response-pane:has(.status-2xx) { border-top-color: var(--d-green); }
+#modal-response-pane:has(.status-3xx) { border-top-color: var(--d-orange); }
+#modal-response-pane:has(.status-4xx),
+#modal-response-pane:has(.status-5xx) { border-top-color: var(--d-red); }
+
+.modal-compare-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.modal-compare-editable .modal-compare-label {
+  color: var(--d-cyan);
+}
+
+#modal-response-pane .modal-compare-label {
+  color: var(--d-purple);
+}
+
+/* Read-only fields on the original/response sides */
+.compare-field {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  background: var(--raised);
+  color: var(--text);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 12px;
+  opacity: 0.72;
+  display: block;
+  min-height: 34px;
+  word-break: break-all;
+  line-height: 1.5;
+}
+
+textarea.compare-field {
+  resize: vertical;
+  overflow-y: auto;
+  cursor: default;
+}
+
+/* Taller textareas for better content visibility */
+#orig-headers,
+#modal-headers,
+#modal-resp-headers { min-height: 120px; }
+
+#orig-body,
+#modal-body,
+#modal-resp-body { min-height: 180px; }
+
+/* Status badge inside the response pane label */
+.modal-resp-badge {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  vertical-align: middle;
+}
+
+.modal-resp-badge.status-2xx { background: rgba(80,  250, 123, 0.18); color: var(--d-green);  }
+.modal-resp-badge.status-3xx { background: rgba(255, 184, 108, 0.18); color: var(--d-orange); }
+.modal-resp-badge.status-4xx,
+.modal-resp-badge.status-5xx { background: rgba(255,  85,  85, 0.18); color: var(--d-red);    }
+
+/* Changed field indicator on the editable side */
+.modal-compare-editable .form-group.compare-changed > label::after {
+  content: " ●";
+  color: var(--d-orange);
+  font-size: 8px;
+  vertical-align: middle;
+}
+
+.modal-compare-editable .form-group.compare-changed > input,
+.modal-compare-editable .form-group.compare-changed > select,
+.modal-compare-editable .form-group.compare-changed > textarea {
+  border-color: rgba(255, 184, 108, 0.55);
+  box-shadow: 0 0 0 2px rgba(255, 184, 108, 0.1);
+}
+
+/* ─── Regex filter toggle ──────────────────────────────────────────────────── */
+#filter-regex {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 12px;
+  padding: 5px 9px;
+  letter-spacing: 0;
+}
+
+#filter-regex.active {
+  background: rgba(241, 250, 140, 0.15);
+  color: var(--d-yellow);
+  border-color: rgba(241, 250, 140, 0.4);
+}
+
+#filter.filter-invalid {
+  border-color: var(--d-red);
+  box-shadow: 0 0 0 2px rgba(255, 85, 85, 0.2);
+}
+
+/* ─── Status filter buttons ────────────────────────────────────────────────── */
+.status-filters {
+  display: flex;
+  gap: 3px;
+  margin-left: auto;
+}
+
+.status-filter-btn {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  letter-spacing: 0.02em;
+}
+
+.status-filter-btn:hover {
+  background: var(--d-overlay);
+  color: var(--text);
+}
+
+.status-filter-btn[data-status="2"].active {
+  background: rgba(80, 250, 123, 0.18);
+  color: var(--d-green);
+  border-color: rgba(80, 250, 123, 0.4);
+}
+
+.status-filter-btn[data-status="3"].active {
+  background: rgba(255, 184, 108, 0.18);
+  color: var(--d-orange);
+  border-color: rgba(255, 184, 108, 0.4);
+}
+
+.status-filter-btn[data-status="4"].active,
+.status-filter-btn[data-status="5"].active {
+  background: rgba(255, 85, 85, 0.18);
+  color: var(--d-red);
+  border-color: rgba(255, 85, 85, 0.4);
+}
+
+/* ─── Full capture button ──────────────────────────────────────────────────── */
+#full-capture.active {
+  background: rgba(139, 233, 253, 0.15);
+  color: var(--d-cyan);
+  border-color: rgba(139, 233, 253, 0.4);
+}
+
+/* ─── Diff button ──────────────────────────────────────────────────────────── */
+#diff-request {
+  background: rgba(241, 250, 140, 0.1);
+  color: var(--d-yellow);
+  border-color: rgba(241, 250, 140, 0.3);
+}
+
+#diff-request:hover:not(:disabled) {
+  background: rgba(241, 250, 140, 0.22);
+  border-color: var(--d-yellow);
+}
+
+#diff-request:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* ─── Wide modal (diff + modify) ──────────────────────────────────────────── */
+.modal-wide {
+  width: min(1260px, 96vw);
+  max-height: 94vh;
+}
+
+/* ─── Diff view ────────────────────────────────────────────────────────────── */
+.diff-section {
+  margin-bottom: 22px;
+}
+
+.diff-section-title {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--d-cyan);
+  margin-bottom: 8px;
+}
+
+/* Scalar value diff (URL, Method) */
+.diff-value {
+  padding: 5px 10px;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 12px;
+  border-radius: var(--radius-sm);
+  margin-bottom: 3px;
+  word-break: break-all;
+}
+
+.diff-value-remove {
+  background: rgba(255, 85, 85, 0.12);
+  color: var(--d-red);
+  border-left: 3px solid var(--d-red);
+}
+
+.diff-value-add {
+  background: rgba(80, 250, 123, 0.1);
+  color: var(--d-green);
+  border-left: 3px solid var(--d-green);
+}
+
+.diff-value-same {
+  color: var(--text);
+  background: var(--raised);
+}
+
+/* Side-by-side split */
+.diff-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  background: var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+}
+
+.diff-pane {
+  background: var(--code-bg);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.diff-pane-label {
+  padding: 4px 10px;
+  background: var(--raised);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.diff-lines {
+  overflow-x: auto;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+
+.diff-line {
+  padding: 0 10px;
+  white-space: pre;
+  min-height: 21px;
+}
+
+.diff-same  { color: var(--d-fg); }
+.diff-remove {
+  background: rgba(255, 85, 85, 0.15);
+  color: var(--d-red);
+  border-left: 2px solid rgba(255, 85, 85, 0.6);
+}
+.diff-add {
+  background: rgba(80, 250, 123, 0.12);
+  color: var(--d-green);
+  border-left: 2px solid rgba(80, 250, 123, 0.55);
+}
+.diff-empty {
+  background: rgba(68, 71, 90, 0.18);
+  border-left: 2px solid transparent;
+}
+
+.diff-truncated-note {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--d-orange);
+  font-style: italic;
+}
+
+/* Headers diff table */
+.diff-headers {
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+}
+
+.diff-headers-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 28%) 1fr 1fr;
+  font-size: 11.5px;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+}
+
+.diff-headers-row > span {
+  padding: 5px 10px;
+  border-right: 1px solid var(--border-subtle);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diff-headers-row > span:last-child { border-right: none; }
+
+.diff-headers-head {
+  background: var(--raised);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.diff-row-add    { background: rgba(80, 250, 123, 0.08); }
+.diff-row-remove { background: rgba(255, 85, 85, 0.08); }
+.diff-row-change { background: rgba(255, 184, 108, 0.08); }
+
+.diff-header-key { color: var(--d-cyan); font-weight: 500; }
+.diff-absent     { opacity: 0.4; font-style: italic; }
